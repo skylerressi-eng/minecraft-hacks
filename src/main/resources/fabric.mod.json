@@ -1,0 +1,19 @@
+{
+    "schemaVersion": 1,
+    "id": "phantom-client",
+    "version": "${version}",
+    "name": "Phantom Client",
+    "description": "Minecraft PvP hack client with multiple game modes",
+    "authors": ["PhantomDev"],
+    "contact": {},
+    "license": "MIT",
+    "environment": "client",
+    "entrypoints": {
+        "client": ["com.github.hackclient.PhantomClient"]
+    },
+    "depends": {
+        "fabricloader": ">=0.16.0",
+        "minecraft": "~1.21.1",
+        "java": ">=17"
+    }
+}
