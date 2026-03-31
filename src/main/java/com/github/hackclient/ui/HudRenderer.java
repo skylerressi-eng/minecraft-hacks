@@ -102,6 +102,8 @@ public class HudRenderer {
         return text.length() * 6; // Approximate MC font width
     }
 
+    public ModuleManager getModuleManager() { return moduleManager; }
+
     // Settings
     public void setShowWatermark(boolean show) { this.showWatermark = show; }
     public void setShowActiveModules(boolean show) { this.showActiveModules = show; }
