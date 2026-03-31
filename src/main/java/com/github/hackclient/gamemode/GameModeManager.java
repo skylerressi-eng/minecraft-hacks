@@ -5,6 +5,7 @@ import com.github.hackclient.module.mace.*;
 import com.github.hackclient.module.legacy.*;
 import com.github.hackclient.module.bedwars.*;
 import com.github.hackclient.module.crystal.*;
+import com.github.hackclient.module.combat.InstantPot;
 
 /**
  * Manages game modes and registers all modules for each mode.
@@ -33,6 +34,9 @@ public class GameModeManager {
         moduleManager.register(new AutoStuntSlam());
         moduleManager.register(new MaceSwapCombo());
         moduleManager.register(new AutoShieldSwap());
+        moduleManager.register(new ShieldRotation());
+        moduleManager.register(new WindburstPearlMacro());
+        moduleManager.register(new InstantPot()); // Instant pot works in mace mode
     }
 
     private void registerLegacy18Modules() {
@@ -65,6 +69,7 @@ public class GameModeManager {
         moduleManager.register(autoPearl);
         moduleManager.register(new Surround());
         moduleManager.register(new AnchorAura());
+        moduleManager.register(new SmartCrystalAnchor());
     }
 
     /**

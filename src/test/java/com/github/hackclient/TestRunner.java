@@ -3,10 +3,13 @@ package com.github.hackclient;
 import com.github.hackclient.antidetect.HumanizedTimer;
 import com.github.hackclient.antidetect.HumanizedTimer.SkillLevel;
 import com.github.hackclient.antidetect.AntiCheatBypass;
+import com.github.hackclient.antidetect.AntiCheatAnalyzer;
 import com.github.hackclient.module.Module;
 import com.github.hackclient.module.ModuleManager;
 import com.github.hackclient.gamemode.GameMode;
 import com.github.hackclient.gamemode.GameModeManager;
+import com.github.hackclient.ui.PhantomGui;
+import com.github.hackclient.ui.HudRenderer;
 
 import java.util.*;
 
@@ -45,6 +48,18 @@ public class TestRunner {
         testModuleLookup();
         testGameModeSwitchDisablesOthers();
         testAllModulesHaveTimers();
+
+        // New feature tests
+        testGuiToggle();
+        testGuiPanels();
+        testHudRenderer();
+        testAntiCheatAnalyzer();
+        testAntiCheatProfiles();
+        testShieldRotationModule();
+        testWindburstPearlMacro();
+        testInstantPotModule();
+        testSmartCrystalAnchor();
+        testAutoBreachSwapToggle();
 
         System.out.println("\n=== RESULTS ===");
         System.out.printf("PASSED: %d / %d%n", passed, passed + failed);
@@ -236,7 +251,8 @@ public class TestRunner {
         ModuleManager mm = new ModuleManager();
         GameModeManager gmm = new GameModeManager(mm);
         gmm.registerAll();
-        check("Total module count = 24: " + mm.getModuleCount(), mm.getModuleCount() == 24);
+        // 5+3 mace + 7 legacy + 6 bedwars + 6+1 crystal = 28
+        check("Total module count = 28: " + mm.getModuleCount(), mm.getModuleCount() == 28);
     }
 
     static void testModuleToggle() {
@@ -284,6 +300,161 @@ public class TestRunner {
             if (m.getTimer() == null) { ok = false; break; }
         }
         check("All modules have humanized timers", ok);
+    }
+
+    // === NEW FEATURE TESTS ===
+
+    static void testGuiToggle() {
+        ModuleManager mm = new ModuleManager();
+        GameModeManager gmm = new GameModeManager(mm);
+        gmm.registerAll();
+        PhantomGui gui = new PhantomGui(mm);
+
+        check("GUI starts invisible", !gui.isVisible());
+        gui.onKeyPress(344); // Right Shift
+        check("GUI visible after Right Shift", gui.isVisible());
+        gui.onKeyPress(344);
+        check("GUI hidden after second Right Shift", !gui.isVisible());
+    }
+
+    static void testGuiPanels() {
+        ModuleManager mm = new ModuleManager();
+        GameModeManager gmm = new GameModeManager(mm);
+        gmm.registerAll();
+        PhantomGui gui = new PhantomGui(mm);
+
+        check("GUI has 4 panels (one per game mode)", gui.getPanels().size() == 4);
+
+        // Check panels have correct module counts
+        int totalInPanels = 0;
+        for (PhantomGui.CategoryPanel panel : gui.getPanels()) {
+            totalInPanels += panel.modules.size();
+        }
+        check("GUI panels contain all modules: " + totalInPanels, totalInPanels == 28);
+    }
+
+    static void testHudRenderer() {
+        ModuleManager mm = new ModuleManager();
+        GameModeManager gmm = new GameModeManager(mm);
+        gmm.registerAll();
+        HudRenderer hud = new HudRenderer(mm);
+
+        HudRenderer.HudData data = hud.getHudData(1920, 1080, "Crystal PvP", 60, 30, 100.5, 64.0, -200.3);
+        check("HUD has watermark", data.watermark != null && data.watermark.contains("Phantom"));
+        check("HUD has coords", data.coordsText != null && data.coordsText.contains("100.5"));
+        check("HUD has game mode", data.gameModeText != null && data.gameModeText.contains("Crystal"));
+    }
+
+    static void testAntiCheatAnalyzer() {
+        AntiCheatAnalyzer analyzer = new AntiCheatAnalyzer();
+
+        // Test auto-detection by server IP
+        analyzer.detectAntiCheat("mc.hypixel.net");
+        check("Detects Watchdog on Hypixel",
+              analyzer.getDetectedType() == AntiCheatAnalyzer.AntiCheatType.WATCHDOG);
+
+        // Test brand detection
+        analyzer.detectFromBrand("GrimAC v2.3.67");
+        check("Detects Grim from brand",
+              analyzer.getDetectedType() == AntiCheatAnalyzer.AntiCheatType.GRIM);
+
+        // Test unknown defaults
+        analyzer.detectAntiCheat("some.random.server");
+        check("Unknown server gets safe defaults",
+              analyzer.getDetectedType() == AntiCheatAnalyzer.AntiCheatType.UNKNOWN);
+    }
+
+    static void testAntiCheatProfiles() {
+        // Test that all profiles have sane values
+        boolean allValid = true;
+        for (AntiCheatAnalyzer.AntiCheatType type : AntiCheatAnalyzer.AntiCheatType.values()) {
+            AntiCheatAnalyzer.BypassProfile profile = AntiCheatAnalyzer.getProfile(type);
+            if (profile == null) { allValid = false; continue; }
+            if (profile.maxCps <= 0 || profile.maxCps > 25) allValid = false;
+            if (profile.actionProbability <= 0 || profile.actionProbability > 1.0) allValid = false;
+            if (profile.maxReachExtra < 0 || profile.maxReachExtra > 1.0) allValid = false;
+        }
+        check("All anti-cheat profiles have valid parameters", allValid);
+
+        // Test that stricter ACs have lower action probabilities
+        AntiCheatAnalyzer.BypassProfile polar = AntiCheatAnalyzer.getProfile(AntiCheatAnalyzer.AntiCheatType.POLAR);
+        AntiCheatAnalyzer.BypassProfile ncp = AntiCheatAnalyzer.getProfile(AntiCheatAnalyzer.AntiCheatType.NOCHEATPLUS);
+        check("Polar is stricter than NCP (lower action prob)",
+              polar.actionProbability < ncp.actionProbability);
+    }
+
+    static void testShieldRotationModule() {
+        ModuleManager mm = new ModuleManager();
+        GameModeManager gmm = new GameModeManager(mm);
+        gmm.registerAll();
+        Module m = mm.getModule("ShieldRotation");
+        check("ShieldRotation module exists", m != null);
+        check("ShieldRotation is in MACE mode", m != null && m.getGameMode() == GameMode.MACE);
+        if (m != null) {
+            m.toggle();
+            check("ShieldRotation can be toggled on", m.isEnabled());
+            m.onTick(); // Should not crash
+            m.toggle();
+            check("ShieldRotation can be toggled off", !m.isEnabled());
+        }
+    }
+
+    static void testWindburstPearlMacro() {
+        ModuleManager mm = new ModuleManager();
+        GameModeManager gmm = new GameModeManager(mm);
+        gmm.registerAll();
+        Module m = mm.getModule("WindburstPearlMacro");
+        check("WindburstPearlMacro module exists", m != null);
+        check("WindburstPearlMacro is in MACE mode", m != null && m.getGameMode() == GameMode.MACE);
+    }
+
+    static void testInstantPotModule() {
+        ModuleManager mm = new ModuleManager();
+        GameModeManager gmm = new GameModeManager(mm);
+        gmm.registerAll();
+        Module m = mm.getModule("InstantPot");
+        check("InstantPot module exists", m != null);
+        if (m != null) {
+            m.toggle();
+            m.onTick(); // Should not crash
+            m.toggle();
+        }
+        check("InstantPot toggles correctly", m != null && !m.isEnabled());
+    }
+
+    static void testSmartCrystalAnchor() {
+        ModuleManager mm = new ModuleManager();
+        GameModeManager gmm = new GameModeManager(mm);
+        gmm.registerAll();
+        Module m = mm.getModule("SmartCrystalAnchor");
+        check("SmartCrystalAnchor module exists", m != null);
+        check("SmartCrystalAnchor is in CRYSTAL mode", m != null && m.getGameMode() == GameMode.CRYSTAL);
+        if (m != null) {
+            m.toggle();
+            m.onTick(); // Should not crash
+            m.toggle();
+        }
+        check("SmartCrystalAnchor toggles correctly", m != null && !m.isEnabled());
+    }
+
+    static void testAutoBreachSwapToggle() {
+        ModuleManager mm = new ModuleManager();
+        GameModeManager gmm = new GameModeManager(mm);
+        gmm.registerAll();
+        Module m = mm.getModule("AutoBreachSwap");
+        check("AutoBreachSwap module exists", m != null);
+        if (m != null) {
+            m.toggle(); // enable module
+            // Simulate V key press for toggle
+            com.github.hackclient.module.legacy.AutoBreachSwap abs =
+                    (com.github.hackclient.module.legacy.AutoBreachSwap) m;
+            check("AutoBreachSwap starts with toggle off", !abs.isActiveToggle());
+            abs.onKeyPress(86); // V key
+            check("AutoBreachSwap toggle activates on V press", abs.isActiveToggle());
+            abs.onKeyPress(86);
+            check("AutoBreachSwap toggle deactivates on second V", !abs.isActiveToggle());
+            m.toggle(); // disable
+        }
     }
 
     // === HELPER ===

@@ -20,12 +20,31 @@ public class AutoBreachSwap extends Module {
     private long lastSwapTime = 0;
     private int comboState = 0; // 0=sword, 1=axe-hit, 2=swap-back
 
+    // Toggle keybind: press to activate/deactivate mid-fight
+    // GLFW_KEY_V = 86
+    public static final int TOGGLE_KEY = 86;
+    private boolean activeToggle = false;
+
     public AutoBreachSwap() {
         super("AutoBreachSwap",
-              "Axe-breaks enemy shield then sword combos for the kill",
+              "Axe-breaks enemy shield then sword combos for the kill (toggle: V key)",
               GameMode.LEGACY_1_8,
               HumanizedTimer.SkillLevel.EXPERT);
     }
+
+    /**
+     * Handle keybind toggle - press V to activate/deactivate breach swap.
+     */
+    public boolean onKeyPress(int keyCode) {
+        if (keyCode == TOGGLE_KEY && isEnabled()) {
+            activeToggle = !activeToggle;
+            if (!activeToggle) comboState = 0;
+            return true;
+        }
+        return false;
+    }
+
+    public boolean isActiveToggle() { return activeToggle; }
 
     @Override
     public void onTick() {
@@ -33,6 +52,7 @@ public class AutoBreachSwap extends Module {
         long delay = timer.getNextDelayMs();
 
         if (now - lastSwapTime < delay) return;
+        if (!activeToggle) return; // Only run when toggled on
         if (!isInCombat()) { comboState = 0; return; }
 
         switch (comboState) {
