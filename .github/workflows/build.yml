@@ -1,0 +1,62 @@
+name: Build Phantom Client JAR
+
+on:
+  push:
+    branches: [ 'claude/minecraft-hack-client-IPi0a', 'main' ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v3
+
+      - name: Build mod JAR
+        run: |
+          chmod +x gradlew 2>/dev/null || true
+          gradle build --no-daemon
+
+      - name: Upload mod JAR
+        uses: actions/upload-artifact@v4
+        with:
+          name: phantom-client-mod
+          path: build/libs/phantom-client-*.jar
+          if-no-files-found: error
+
+      - name: Create Release
+        if: github.ref == 'refs/heads/claude/minecraft-hack-client-IPi0a'
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: v2.0.0-${{ github.run_number }}
+          name: "Phantom Client v2.0.0 (Build #${{ github.run_number }})"
+          body: |
+            ## Phantom Client v2.0.0
+
+            Drop the `.jar` file into your `.minecraft/mods/` folder.
+            Requires: Minecraft 1.21.1 + Fabric Loader 0.16.0+ + Fabric API
+
+            **Controls:**
+            - Right Shift: Open/close GUI
+            - V: Toggle AutoBreachSwap
+            - Click modules in the GUI to enable/disable
+
+            **28 modules across 4 game modes:**
+            - Mace PvP (8 modules)
+            - 1.8 PvP (7 modules)
+            - Bedwars (6 modules)
+            - Crystal PvP (7 modules)
+          files: build/libs/phantom-client-*.jar
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
