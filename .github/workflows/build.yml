@@ -5,6 +5,9 @@ on:
     branches: [ 'claude/minecraft-hack-client-IPi0a', 'main' ]
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -23,8 +26,8 @@ jobs:
 
       - name: Build mod JAR
         run: |
-          chmod +x gradlew 2>/dev/null || true
-          gradle build --no-daemon
+          chmod +x gradlew
+          ./gradlew build --no-daemon
 
       - name: Upload mod JAR
         uses: actions/upload-artifact@v4
