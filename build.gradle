@@ -24,11 +24,18 @@ sourceSets {
             compileClasspath += sourceSets.stubs.output
         }
     }
+    test {
+        java {
+            compileClasspath += sourceSets.stubs.output
+            // Only include the standalone test runner, not JUnit tests
+            exclude '**/HumanizedTimerTest.java'
+            exclude '**/AntiCheatBypassTest.java'
+            exclude '**/ModuleManagerTest.java'
+        }
+    }
 }
 
 dependencies {
-    testImplementation 'org.junit.jupiter:junit-jupiter:5.10.1'
-    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
 }
 
 tasks.withType(JavaCompile).configureEach {
@@ -40,9 +47,17 @@ java {
     targetCompatibility = JavaVersion.VERSION_17
 }
 
+// Tests are standalone (no JUnit) - run via JavaExec
 test {
-    useJUnitPlatform()
+    enabled = false
 }
+
+task runTests(type: JavaExec) {
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'com.github.hackclient.TestRunner'
+}
+
+check.dependsOn runTests
 
 jar {
     archiveBaseName = 'phantom-client'

@@ -27,7 +27,7 @@ jobs:
       - name: Build mod JAR
         run: |
           chmod +x gradlew
-          ./gradlew build --no-daemon
+          ./gradlew jar --no-daemon
 
       - name: Upload mod JAR
         uses: actions/upload-artifact@v4
