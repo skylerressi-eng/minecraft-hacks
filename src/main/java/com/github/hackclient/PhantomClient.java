@@ -4,52 +4,44 @@ import com.github.hackclient.module.ModuleManager;
 import com.github.hackclient.gamemode.GameModeManager;
 import com.github.hackclient.gamemode.GameMode;
 import com.github.hackclient.ui.PhantomGui;
-import com.github.hackclient.ui.PhantomGuiScreen;
-import com.github.hackclient.ui.HudOverlay;
 import com.github.hackclient.ui.HudRenderer;
 import com.github.hackclient.antidetect.AntiCheatAnalyzer;
 import net.fabricmc.api.ClientModInitializer;
-import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
-import net.fabricmc.fabric.api.client.keybinding.v1.KeyBindingHelper;
-import net.fabricmc.fabric.api.client.rendering.v1.HudRenderCallback;
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.option.KeyBinding;
-import net.minecraft.client.util.InputUtil;
 import org.lwjgl.glfw.GLFW;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+
+import java.lang.reflect.Field;
+import java.lang.reflect.Method;
+import java.lang.reflect.Proxy;
 
 /**
  * Phantom Client - Minecraft PvP hack client with game-mode-specific modules.
  * Meteor Client-style UI with Right Shift to open click GUI.
  *
- * Fabric integration:
- * - Registers keybinds via Fabric KeyBindingHelper
- * - Hooks into ClientTickEvents for module ticking and key checking
- * - Hooks into HudRenderCallback for overlay drawing
+ * Uses reflection for all Minecraft class access to avoid
+ * intermediary mapping issues (compiled without Fabric Loom).
  */
 public class PhantomClient implements ClientModInitializer {
     public static final String NAME = "Phantom Client";
     public static final String VERSION = "2.0.0";
-    public static final Logger LOGGER = LoggerFactory.getLogger(NAME);
 
     private static PhantomClient instance;
-    private ModuleManager moduleManager;
+    private static ModuleManager moduleManager;
     private GameModeManager gameModeManager;
     private PhantomGui gui;
     private HudRenderer hudRenderer;
     private AntiCheatAnalyzer antiCheatAnalyzer;
 
-    // Fabric keybinds
-    private KeyBinding openGuiKey;
-    private KeyBinding breachSwapToggleKey;
+    // Key state tracking for edge detection
+    private boolean rightShiftWasDown = false;
+    private boolean vKeyWasDown = false;
+    private boolean guiOpen = false;
 
     @Override
     public void onInitializeClient() {
         instance = this;
-        LOGGER.info("{} v{} initializing...", NAME, VERSION);
+        log("Phantom Client v" + VERSION + " initializing...");
 
-        // Core systems
+        // Core systems (no MC dependencies)
         moduleManager = new ModuleManager();
         gameModeManager = new GameModeManager(moduleManager);
         antiCheatAnalyzer = new AntiCheatAnalyzer();
@@ -57,64 +49,102 @@ public class PhantomClient implements ClientModInitializer {
         // Register all game modes and their modules
         gameModeManager.registerAll();
 
-        // GUI systems
+        // GUI systems (no MC dependencies)
         gui = new PhantomGui(moduleManager);
         hudRenderer = new HudRenderer(moduleManager);
 
-        // Register keybinds with Fabric API
-        registerKeybinds();
+        // Register tick handler via reflection (avoids MC class imports)
+        registerTickHandler();
 
-        // Register event callbacks
-        registerEvents();
-
-        LOGGER.info("Loaded {} modules across {} game modes",
-                moduleManager.getModuleCount(),
-                GameMode.values().length);
-        LOGGER.info("Press RIGHT SHIFT to open the GUI");
-        LOGGER.info("{} v{} ready!", NAME, VERSION);
+        log("Loaded " + moduleManager.getModuleCount() + " modules across " +
+                GameMode.values().length + " game modes");
+        log("Press RIGHT SHIFT to toggle modules, V to toggle AutoBreachSwap");
+        log("Phantom Client v" + VERSION + " ready!");
     }
 
     /**
-     * Register all keybinds with Fabric's KeyBindingHelper.
-     * This makes them show up in Minecraft's Controls settings too.
+     * Register a client tick handler using reflection + dynamic proxy.
+     * This avoids importing any net.minecraft.* classes directly.
      */
-    private void registerKeybinds() {
-        // Right Shift to open GUI
-        openGuiKey = KeyBindingHelper.registerKeyBinding(new KeyBinding(
-                "key.phantom.openGui",           // Translation key
-                InputUtil.Type.KEYSYM,
-                GLFW.GLFW_KEY_RIGHT_SHIFT,       // Default: Right Shift
-                "category.phantom.general"        // Category in controls menu
-        ));
+    private void registerTickHandler() {
+        try {
+            // Load Fabric API tick events class (stable package name)
+            Class<?> tickEventsClass = Class.forName(
+                    "net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents");
 
-        // V to toggle AutoBreachSwap
-        breachSwapToggleKey = KeyBindingHelper.registerKeyBinding(new KeyBinding(
-                "key.phantom.breachSwapToggle",
-                InputUtil.Type.KEYSYM,
-                GLFW.GLFW_KEY_V,
-                "category.phantom.combat"
-        ));
-    }
-
-    /**
-     * Register Fabric event callbacks for tick processing, key handling, and HUD rendering.
-     */
-    private void registerEvents() {
-        // Client tick: check keybinds + tick all enabled modules
-        ClientTickEvents.END_CLIENT_TICK.register(client -> {
-            if (client.player == null) return;
-
-            // Check GUI keybind
-            while (openGuiKey.wasPressed()) {
-                if (client.currentScreen instanceof PhantomGuiScreen) {
-                    client.setScreen(null); // Close GUI
-                } else if (client.currentScreen == null) {
-                    client.setScreen(new PhantomGuiScreen(gui)); // Open GUI
+            // Get the EndTick inner interface
+            Class<?> endTickClass = null;
+            for (Class<?> inner : tickEventsClass.getDeclaredClasses()) {
+                if (inner.getSimpleName().equals("EndTick")) {
+                    endTickClass = inner;
+                    break;
                 }
             }
+            if (endTickClass == null) {
+                log("ERROR: Could not find EndTick interface");
+                return;
+            }
 
-            // Check breach swap toggle
-            while (breachSwapToggleKey.wasPressed()) {
+            // Create a dynamic proxy that implements EndTick
+            final Class<?> finalEndTickClass = endTickClass;
+            Object tickHandler = Proxy.newProxyInstance(
+                    getClass().getClassLoader(),
+                    new Class<?>[] { finalEndTickClass },
+                    (proxy, method, args) -> {
+                        if (method.getName().equals("onEndTick")) {
+                            onClientTick();
+                        }
+                        return null;
+                    }
+            );
+
+            // Get END_CLIENT_TICK field
+            Field endTickField = tickEventsClass.getField("END_CLIENT_TICK");
+            Object event = endTickField.get(null);
+
+            // Call event.register(handler) - type erasure makes this work with Object
+            Method registerMethod = null;
+            for (Method m : event.getClass().getMethods()) {
+                if (m.getName().equals("register") && m.getParameterCount() == 1) {
+                    registerMethod = m;
+                    break;
+                }
+            }
+            if (registerMethod != null) {
+                registerMethod.invoke(event, tickHandler);
+                log("Tick handler registered successfully");
+            }
+        } catch (Exception e) {
+            log("ERROR: Failed to register tick handler: " + e.getMessage());
+            e.printStackTrace();
+        }
+    }
+
+    /**
+     * Called every client tick. Uses GLFW directly for key input
+     * (LWJGL classes have stable names, no remapping needed).
+     */
+    private void onClientTick() {
+        try {
+            long window = GLFW.glfwGetCurrentContext();
+            if (window == 0L) return;
+
+            // Right Shift - toggle GUI / cycle modules display
+            boolean rightShiftDown = GLFW.glfwGetKey(window, GLFW.GLFW_KEY_RIGHT_SHIFT) == GLFW.GLFW_PRESS;
+            if (rightShiftDown && !rightShiftWasDown) {
+                guiOpen = !guiOpen;
+                gui.setVisible(guiOpen);
+                if (guiOpen) {
+                    log("GUI opened - modules visible");
+                } else {
+                    log("GUI closed");
+                }
+            }
+            rightShiftWasDown = rightShiftDown;
+
+            // V key - toggle AutoBreachSwap
+            boolean vKeyDown = GLFW.glfwGetKey(window, GLFW.GLFW_KEY_V) == GLFW.GLFW_PRESS;
+            if (vKeyDown && !vKeyWasDown) {
                 moduleManager.getAllModules().forEach(m -> {
                     if (m instanceof com.github.hackclient.module.legacy.AutoBreachSwap) {
                         ((com.github.hackclient.module.legacy.AutoBreachSwap) m)
@@ -122,17 +152,31 @@ public class PhantomClient implements ClientModInitializer {
                     }
                 });
             }
+            vKeyWasDown = vKeyDown;
+
+            // Number keys 1-4 to switch game modes
+            for (int i = 0; i < 4; i++) {
+                boolean keyDown = GLFW.glfwGetKey(window, GLFW.GLFW_KEY_1 + i) == GLFW.GLFW_PRESS;
+                if (keyDown) {
+                    GameMode[] modes = GameMode.values();
+                    if (i < modes.length) {
+                        gameModeManager.switchMode(modes[i]);
+                    }
+                }
+            }
 
             // Tick all enabled modules
             moduleManager.tickAll();
-        });
+        } catch (Exception e) {
+            // Silently ignore tick errors to prevent spam
+        }
+    }
 
-        // HUD render: draw overlay on screen
-        HudRenderCallback.EVENT.register(new HudOverlay(hudRenderer, gameModeManager));
+    private void log(String msg) {
+        System.out.println("[Phantom Client] " + msg);
     }
 
     // --- Accessors ---
-
     public static PhantomClient getInstance() { return instance; }
     public ModuleManager getModuleManager() { return moduleManager; }
     public GameModeManager getGameModeManager() { return gameModeManager; }

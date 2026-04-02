@@ -1,7 +1,7 @@
 {
     "schemaVersion": 1,
     "id": "phantom-client",
-    "version": "${version}",
+    "version": "2.0.0",
     "name": "Phantom Client",
     "description": "Minecraft PvP hack client with multiple game modes - Meteor-style UI",
     "authors": ["PhantomDev"],
@@ -11,10 +11,10 @@
     "entrypoints": {
         "client": ["com.github.hackclient.PhantomClient"]
     },
-"depends": {
+    "depends": {
         "fabricloader": ">=0.16.0",
         "fabric-api": "*",
-        "minecraft": "~1.21.1",
+        "minecraft": ">=1.21",
         "java": ">=17"
     }
 }
