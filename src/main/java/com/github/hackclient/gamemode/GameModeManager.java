@@ -76,9 +76,7 @@ public class GameModeManager {
      * Switch to a game mode - disables modules from other modes.
      */
     public void switchMode(GameMode mode) {
-        if (activeMode != null) {
-            moduleManager.activateGameMode(mode);
-        }
+        moduleManager.activateGameMode(mode);
         activeMode = mode;
     }
 
