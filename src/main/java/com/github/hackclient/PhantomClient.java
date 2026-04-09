@@ -173,11 +173,11 @@ public class PhantomClient implements ClientModInitializer {
             // Lazy-init McReflect (MC must be fully loaded first)
             if (!mcReflectReady) {
                 initAttempts++;
-                if (initAttempts < 100) return; // Wait ~5 seconds for MC to load
+                if (initAttempts < 20) return; // Wait ~1 second for MC to load
                 mcReflectReady = McReflect.init();
                 if (!mcReflectReady) {
-                    if (initAttempts % 200 == 0) {
-                        log("Waiting for MC reflection init...");
+                    if (initAttempts % 100 == 0) {
+                        log("Waiting for MC reflection init... (attempt " + initAttempts + ")");
                     }
                     return;
                 }
@@ -193,7 +193,10 @@ public class PhantomClient implements ClientModInitializer {
             // Send welcome message once when player is available
             if (!welcomeSent && McReflect.getPlayer() != null) {
                 welcomeSent = true;
-                McReflect.sendChatMessage("\u00a7b[Phantom Client] \u00a7fv" + VERSION + " loaded! Press \u00a7eRIGHT SHIFT\u00a7f to open GUI.");
+                if (McReflect.canSendMessage()) {
+                    McReflect.sendChatMessage("\u00a7b[Phantom Client] \u00a7fv" + VERSION + " loaded! Press \u00a7eRIGHT SHIFT\u00a7f to open GUI.");
+                }
+                log("Player joined - Phantom Client active!");
             }
 
             // Only process keybinds when no screen is open
@@ -255,7 +258,7 @@ public class PhantomClient implements ClientModInitializer {
      * Receives the DrawContext object from the HUD render event.
      */
     private void onHudRender(Object drawContext) {
-        if (!mcReflectReady) return;
+        if (!mcReflectReady || !McReflect.canRender()) return;
 
         try {
             int screenWidth = McReflect.getScaledWidth();
