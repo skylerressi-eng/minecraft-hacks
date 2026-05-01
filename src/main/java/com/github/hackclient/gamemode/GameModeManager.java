@@ -6,10 +6,9 @@ import com.github.hackclient.module.legacy.*;
 import com.github.hackclient.module.bedwars.*;
 import com.github.hackclient.module.crystal.*;
 import com.github.hackclient.module.combat.InstantPot;
+import com.github.hackclient.module.meteor.*;
+import com.github.hackclient.module.vape.*;
 
-/**
- * Manages game modes and registers all modules for each mode.
- */
 public class GameModeManager {
     private final ModuleManager moduleManager;
     private GameMode activeMode = null;
@@ -18,14 +17,13 @@ public class GameModeManager {
         this.moduleManager = moduleManager;
     }
 
-    /**
-     * Register all modules for all game modes.
-     */
     public void registerAll() {
         registerMaceModules();
         registerLegacy18Modules();
         registerBedwarsModules();
         registerCrystalModules();
+        registerMeteorModules();
+        registerVapeModules();
     }
 
     private void registerMaceModules() {
@@ -36,7 +34,7 @@ public class GameModeManager {
         moduleManager.register(new AutoShieldSwap());
         moduleManager.register(new ShieldRotation());
         moduleManager.register(new WindburstPearlMacro());
-        moduleManager.register(new InstantPot()); // Instant pot works in mace mode
+        moduleManager.register(new InstantPot());
     }
 
     private void registerLegacy18Modules() {
@@ -72,9 +70,42 @@ public class GameModeManager {
         moduleManager.register(new SmartCrystalAnchor());
     }
 
-    /**
-     * Switch to a game mode - disables modules from other modes.
-     */
+    private void registerMeteorModules() {
+        moduleManager.register(new Speed());
+        moduleManager.register(new Fly());
+        moduleManager.register(new NoFall());
+        moduleManager.register(new ESP());
+        moduleManager.register(new Xray());
+        moduleManager.register(new Nuker());
+        moduleManager.register(new Jesus());
+        moduleManager.register(new Scaffold());
+        moduleManager.register(new Step());
+        moduleManager.register(new FullBright());
+        moduleManager.register(new AntiHunger());
+        moduleManager.register(new FastBreak());
+        moduleManager.register(new AutoArmor());
+        moduleManager.register(new AutoEat());
+        moduleManager.register(new Criticals());
+        moduleManager.register(new NoSlow());
+        moduleManager.register(new Sprint());
+        moduleManager.register(new Tracers());
+        moduleManager.register(new StorageESP());
+        moduleManager.register(new FreeCam());
+    }
+
+    private void registerVapeModules() {
+        moduleManager.register(new AimAssist());
+        moduleManager.register(new ClickAssist());
+        moduleManager.register(new AutoBlock());
+        moduleManager.register(new BackTrack());
+        moduleManager.register(new HitSelect());
+        moduleManager.register(new TimerHack());
+        moduleManager.register(new Blink());
+        moduleManager.register(new AntiBot());
+        moduleManager.register(new Chams());
+        moduleManager.register(new NameTags());
+    }
+
     public void switchMode(GameMode mode) {
         moduleManager.activateGameMode(mode);
         activeMode = mode;
@@ -84,9 +115,6 @@ public class GameModeManager {
         return activeMode;
     }
 
-    /**
-     * Get a summary of all registered modules by game mode.
-     */
     public String getSummary() {
         StringBuilder sb = new StringBuilder();
         for (GameMode mode : GameMode.values()) {

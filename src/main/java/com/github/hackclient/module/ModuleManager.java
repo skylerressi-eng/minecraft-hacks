@@ -26,6 +26,7 @@ public class ModuleManager {
     }
 
     public List<Module> getModulesForMode(GameMode mode) {
+        if (mode == GameMode.ALL_HACKS) return allModules;
         return modulesByMode.getOrDefault(mode, List.of());
     }
 
@@ -46,6 +47,7 @@ public class ModuleManager {
 
     /** Enable all modules for a specific game mode, disable all others */
     public void activateGameMode(GameMode mode) {
+        if (mode == GameMode.ALL_HACKS) return; // All Hacks mode doesn't disable anything
         for (Module m : allModules) {
             if (m.isEnabled() && m.getGameMode() != mode) {
                 m.onDisable();

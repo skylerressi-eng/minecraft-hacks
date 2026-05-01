@@ -35,7 +35,7 @@ public class PhantomClient implements ClientModInitializer {
     // Key state tracking for edge detection
     private boolean rightShiftWasDown = false;
     private boolean vKeyWasDown = false;
-    private boolean[] numberKeysWereDown = new boolean[4];
+    private boolean[] numberKeysWereDown = new boolean[7];
     private boolean guiOpen = false;
 
     // Delayed init: McReflect needs MC to be fully loaded
@@ -241,9 +241,10 @@ public class PhantomClient implements ClientModInitializer {
         }
         vKeyWasDown = vKeyDown;
 
-        // Number keys 1-4 to switch game modes
+        // Number keys 1-7 to switch game modes
+        // 1=All Hacks 2=Mace 3=1.8 4=Bedwars 5=Crystal 6=Meteor 7=Vape
         GameMode[] modes = GameMode.values();
-        for (int i = 0; i < 4 && i < modes.length; i++) {
+        for (int i = 0; i < 7 && i < modes.length; i++) {
             boolean keyDown = GLFW.glfwGetKey(window, GLFW.GLFW_KEY_1 + i) == GLFW.GLFW_PRESS;
             if (keyDown && !numberKeysWereDown[i]) {
                 gameModeManager.switchMode(modes[i]);
