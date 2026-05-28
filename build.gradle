@@ -66,6 +66,7 @@ jar {
     manifest {
         attributes(
             'Fabric-Loom-Mixin-Remap-Type': 'static',
+            'Fabric-Mapping-Namespace': 'intermediary',
         )
     }
 }

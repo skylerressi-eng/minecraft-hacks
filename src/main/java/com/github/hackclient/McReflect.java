@@ -76,20 +76,19 @@ public class McReflect {
 
     public static boolean init() {
         if (initialized) return coreReady;
-        initialized = true;
         successCount = 0;
         failCount = 0;
 
         mcClientClass = tryLoadClass("net.minecraft.class_310");
         if (mcClientClass == null) {
-            log("FATAL: Could not find MinecraftClient class");
+            log("FATAL: Could not find MinecraftClient class - will retry");
             return false;
         }
         log("Found MinecraftClient: " + mcClientClass.getName());
 
         getInstanceMethod = tryFindMethod(mcClientClass, new String[]{"method_1551", "getInstance"});
         if (getInstanceMethod == null) {
-            log("FATAL: Could not find getInstance()");
+            log("FATAL: Could not find getInstance() - will retry");
             return false;
         }
         success("MinecraftClient.getInstance()");
@@ -108,6 +107,7 @@ public class McReflect {
         }
 
         coreReady = true;
+        initialized = true;
 
         initFields();
         initClasses();

@@ -11,6 +11,9 @@
     "entrypoints": {
         "client": ["com.github.hackclient.PhantomClient"]
     },
+    "mixins": [
+        "phantom-client.mixins.json"
+    ],
     "depends": {
         "fabricloader": ">=0.16.0",
         "fabric-api": "*",
