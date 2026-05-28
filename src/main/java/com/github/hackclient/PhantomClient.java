@@ -128,6 +128,13 @@ public class PhantomClient implements ClientModInitializer {
 
     private void onClientTick() {
         try {
+            // GLFW key handling runs FIRST — it doesn't need McReflect
+            long window = GLFW.glfwGetCurrentContext();
+            if (window != 0L) {
+                handleKeyInput(window);
+            }
+
+            // Try to init McReflect (lazy, waits for MC to load)
             if (!mcReflectReady) {
                 initAttempts++;
                 if (initAttempts < 20) return;
@@ -142,11 +149,6 @@ public class PhantomClient implements ClientModInitializer {
             stealthEngine.onTick();
             checkStaffProximity();
 
-            long window = GLFW.glfwGetCurrentContext();
-            if (window == 0L) return;
-
-            Object currentScreen = McReflect.getCurrentScreen();
-
             if (!welcomeSent && McReflect.getPlayer() != null) {
                 welcomeSent = true;
                 if (McReflect.canSendMessage()) {
@@ -154,8 +156,6 @@ public class PhantomClient implements ClientModInitializer {
                 }
                 log("Player joined - Phantom Client active!");
             }
-
-            if (currentScreen == null) handleKeyInput(window);
 
             moduleManager.tickAll();
         } catch (Exception e) {
@@ -187,39 +187,51 @@ public class PhantomClient implements ClientModInitializer {
     }
 
     private void handleKeyInput(long window) {
+        // Right Shift - toggle GUI (works even without McReflect)
         boolean rightShiftDown = GLFW.glfwGetKey(window, GLFW.GLFW_KEY_RIGHT_SHIFT) == GLFW.GLFW_PRESS;
         if (rightShiftDown && !rightShiftWasDown) {
             guiOpen = !guiOpen;
             gui.setVisible(guiOpen);
-            if (guiOpen) {
-                McReflect.sendChatMessage("§b[Phantom] §aGUI opened §7- click modules to toggle");
-            } else {
-                McReflect.sendChatMessage("§b[Phantom] §cGUI closed");
-            }
+            log("GUI " + (guiOpen ? "OPENED" : "CLOSED"));
+            trySendChat(guiOpen
+                ? "§b[Phantom] §aGUI opened §7- click modules to toggle"
+                : "§b[Phantom] §cGUI closed");
         }
         rightShiftWasDown = rightShiftDown;
 
+        // V key - toggle AutoBreachSwap
         boolean vKeyDown = GLFW.glfwGetKey(window, GLFW.GLFW_KEY_V) == GLFW.GLFW_PRESS;
         if (vKeyDown && !vKeyWasDown) {
             moduleManager.getAllModules().forEach(m -> {
                 if (m.getName().equals("AutoBreachSwap")) {
                     m.toggle();
-                    String state = m.isEnabled() ? "§aENABLED" : "§cDISABLED";
-                    McReflect.sendChatMessage("§b[Phantom] §fAutoBreachSwap " + state);
+                    String state = m.isEnabled() ? "ENABLED" : "DISABLED";
+                    log("AutoBreachSwap " + state);
+                    trySendChat("§b[Phantom] §fAutoBreachSwap " + (m.isEnabled() ? "§aENABLED" : "§cDISABLED"));
                 }
             });
         }
         vKeyWasDown = vKeyDown;
 
+        // Number keys 1-7 to switch game modes
         GameMode[] modes = GameMode.values();
         for (int i = 0; i < 7 && i < modes.length; i++) {
             boolean keyDown = GLFW.glfwGetKey(window, GLFW.GLFW_KEY_1 + i) == GLFW.GLFW_PRESS;
             if (keyDown && !numberKeysWereDown[i]) {
                 gameModeManager.switchMode(modes[i]);
-                McReflect.sendChatMessage("§b[Phantom] §fSwitched to §e" + modes[i].displayName + "§f mode");
+                log("Switched to " + modes[i].displayName + " mode");
+                trySendChat("§b[Phantom] §fSwitched to §e" + modes[i].displayName + "§f mode");
             }
             numberKeysWereDown[i] = keyDown;
         }
+    }
+
+    private void trySendChat(String message) {
+        try {
+            if (mcReflectReady && McReflect.canSendMessage()) {
+                McReflect.sendChatMessage(message);
+            }
+        } catch (Exception ignored) {}
     }
 
     private void onHudRender(Object drawContext) {
