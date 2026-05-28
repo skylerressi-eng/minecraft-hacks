@@ -1,9 +1,9 @@
 {
     "schemaVersion": 1,
     "id": "phantom-client",
-    "version": "2.0.0",
+    "version": "3.0.0",
     "name": "Phantom Client",
-    "description": "Minecraft PvP hack client with multiple game modes - Meteor-style UI",
+    "description": "Advanced Minecraft hack client with stealth engine, 58 modules, 7 game modes",
     "authors": ["PhantomDev"],
     "contact": {},
     "license": "MIT",

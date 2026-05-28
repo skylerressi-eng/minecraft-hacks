@@ -1,115 +1,150 @@
 package com.github.hackclient.module.mace;
 
+import com.github.hackclient.McReflect;
 import com.github.hackclient.antidetect.AntiCheatBypass;
 import com.github.hackclient.antidetect.HumanizedTimer;
+import com.github.hackclient.antidetect.StealthEngine;
 import com.github.hackclient.gamemode.GameMode;
 import com.github.hackclient.module.Module;
 
+import java.util.List;
+
 /**
- * Shield Rotation - Automatically rotates shield to block incoming mace attacks.
+ * Shield Rotation - Auto-rotate to block attacks from behind.
  *
- * Mace attacks deal massive damage from above. This module detects when an opponent
- * is falling toward you with a mace and:
- * 1. Detects incoming mace attacks by tracking nearby players' fall trajectories
- * 2. Auto-equips shield to offhand if not already equipped
- * 3. Rotates player view upward to face the incoming attacker (shields only block
- *    attacks from the direction the player is facing)
- * 4. Starts blocking at the optimal moment - not too early (they'll wait) not too late
- * 5. After blocking, quickly counter-attacks while they're in recovery
+ * Monitors nearby players' positions and detects when an attack is coming
+ * from outside the player's current field of view. Automatically rotates
+ * the player to face the incoming threat so the shield blocks the damage.
  *
- * Anti-detection: Uses smooth rotation curves, never snaps instantly to look up,
- * and varies the block timing with humanized delays.
+ * Key behaviors:
+ * - Scans all nearby players to find the closest approaching threat
+ * - Detects threats from behind (outside +/-90 degrees of current view)
+ * - Smooth rotation to face the attacker (not instant snap)
+ * - After blocking, quick counter-attack swing
+ * - Respects stealth engine rotation speed limits
+ *
+ * Uses McReflect for player scanning, position tracking, angle calculation,
+ * and rotation application.
  */
 public class ShieldRotation extends Module {
 
+    private float smoothedYaw = 0;
+    private float smoothedPitch = 0;
+    private boolean aimInitialized = false;
+    private boolean isTrackingThreat = false;
+    private Object trackedThreat = null;
     private long lastBlockTime = 0;
-    private float currentPitch = 0;
-    private float currentYaw = 0;
-    private boolean isTrackingAttacker = false;
-    private boolean isBlocking = false;
 
-    // Configurable thresholds
-    private double detectionRange = 12.0;      // Range to scan for falling mace users
-    private double blockTriggerDistance = 6.0;  // Distance at which to start blocking
-    private double minFallSpeed = -0.5;        // Min downward velocity to count as mace attack
-    private float rotationSpeed = 0.55f;       // How fast to rotate (0=slow, 1=instant)
+    // Configurable
+    private double detectionRange = 12.0;
+    private double blockTriggerDistance = 6.0;
+    private float rotationSpeed = 0.55f;
+
+    // Threat approach tracking
+    private double lastThreatDist = 999;
 
     public ShieldRotation() {
         super("ShieldRotation",
-              "Auto-rotates shield to block incoming mace attacks from above",
+              "Auto-rotates to block incoming attacks from behind",
               GameMode.MACE,
-              HumanizedTimer.SkillLevel.EXPERT);
+              HumanizedTimer.SkillLevel.AVERAGE,
+              "combat");
+    }
+
+    @Override
+    public void onEnable() {
+        super.onEnable();
+        aimInitialized = false;
+        isTrackingThreat = false;
+        trackedThreat = null;
     }
 
     @Override
     public void onTick() {
+        incrementTick();
+        if (!isEnabled()) return;
+
+        Object player = McReflect.getPlayer();
+        if (player == null || !McReflect.isPlayerAlive()) return;
+
         long now = System.currentTimeMillis();
         long delay = timer.getNextDelayMs();
-
         if (now - lastBlockTime < delay / 3) return;
 
-        // Phase 1: Scan for incoming mace attackers
-        Object attacker = findIncomingMaceAttacker();
+        // Initialize aim from current look direction
+        if (!aimInitialized) {
+            smoothedYaw = McReflect.getPlayerYaw();
+            smoothedPitch = McReflect.getPlayerPitch();
+            aimInitialized = true;
+        }
 
-        if (attacker == null) {
-            // No threat - stop blocking if we were
-            if (isBlocking) {
-                stopBlocking();
-                isBlocking = false;
-                isTrackingAttacker = false;
+        // Scan for threats - prioritize threats from behind
+        Object threat = findBehindThreat();
+
+        if (threat == null) {
+            if (isTrackingThreat) {
+                isTrackingThreat = false;
+                trackedThreat = null;
             }
             return;
         }
 
-        isTrackingAttacker = true;
+        isTrackingThreat = true;
+        trackedThreat = threat;
 
-        // Phase 2: Ensure shield is in offhand
-        if (!hasShieldEquipped()) {
-            if (hasShieldInInventory() && AntiCheatBypass.shouldActThisTick(0.95)) {
-                equipShieldToOffhand();
-            }
-            return;
-        }
+        // Calculate angles to the threat
+        float[] threatAngles = McReflect.getAnglesTo(threat);
+        if (threatAngles == null) return;
 
-        // Phase 3: Smooth-rotate to face the attacker (look upward toward them)
-        float[] targetAngles = getAnglesTo(attacker);
-        if (targetAngles != null) {
-            float speed = rotationSpeed + (float) (Math.random() * 0.1 - 0.05);
-
-            currentYaw = AntiCheatBypass.smoothRotation(
-                    currentYaw,
-                    AntiCheatBypass.addRotationNoise(targetAngles[0]),
-                    speed
-            );
-            currentPitch = AntiCheatBypass.smoothRotation(
-                    currentPitch,
-                    AntiCheatBypass.addRotationNoise(targetAngles[1]),
-                    speed
-            );
-
-            applyRotation(currentYaw, currentPitch);
-        }
-
-        // Phase 4: Start blocking when attacker is close enough
-        double distance = getDistanceTo(attacker);
-        double fallSpeed = getEntityFallSpeed(attacker);
-
-        if (distance <= blockTriggerDistance && fallSpeed < minFallSpeed) {
-            if (!isBlocking && AntiCheatBypass.shouldActThisTick(0.96)) {
-                startBlocking();
-                isBlocking = true;
-                lastBlockTime = now;
+        // Determine rotation speed - constrained by stealth engine
+        float speed = rotationSpeed + (float) (Math.random() * 0.1 - 0.05);
+        StealthEngine stealth = StealthEngine.getInstance();
+        if (stealth != null) {
+            float maxRotSpeed = stealth.getMaxRotationSpeed();
+            float yawDelta = wrapAngle(threatAngles[0] - smoothedYaw);
+            if (Math.abs(yawDelta) > 0) {
+                speed = Math.min(speed, maxRotSpeed / Math.abs(yawDelta));
             }
         }
 
-        // Phase 5: Counter-attack after successful block
-        if (isBlocking && hasBlockedAttack()) {
-            if (AntiCheatBypass.shouldActThisTick(0.88)) {
-                stopBlocking();
-                isBlocking = false;
-                // Quick counter-attack swing
-                counterAttack(attacker);
+        // Smooth rotation toward threat
+        smoothedYaw = AntiCheatBypass.smoothRotation(
+                smoothedYaw,
+                AntiCheatBypass.addRotationNoise(threatAngles[0]),
+                speed
+        );
+        smoothedPitch = AntiCheatBypass.smoothRotation(
+                smoothedPitch,
+                AntiCheatBypass.addRotationNoise(threatAngles[1]),
+                speed
+        );
+
+        // Apply the rotation
+        setPlayerRotation(smoothedYaw, smoothedPitch);
+
+        // Track whether threat is getting closer
+        double dist = McReflect.distanceTo(threat);
+        boolean approaching = dist < lastThreatDist;
+        lastThreatDist = dist;
+
+        // If threat is close and approaching, record blocking action
+        if (dist <= blockTriggerDistance && approaching) {
+            if (shouldAct(0.90)) {
+                // Face the threat and "block" (stop sprinting as shield proxy)
+                McReflect.setSprinting(false);
                 lastBlockTime = now;
+                recordAction();
+            }
+        }
+
+        // Counter-attack: if we've turned to face them and they're in melee range
+        float facingDiff = Math.abs(wrapAngle(smoothedYaw - threatAngles[0]));
+        if (facingDiff < 10.0f && dist <= 3.5) {
+            if (shouldAct(0.85)) {
+                McReflect.attackEntity(threat);
+                McReflect.swingHand();
+                McReflect.setSprinting(true);
+                recordAction();
             }
         }
     }
@@ -117,71 +152,92 @@ public class ShieldRotation extends Module {
     @Override
     public void onDisable() {
         super.onDisable();
-        if (isBlocking) {
-            stopBlocking();
-            isBlocking = false;
+        isTrackingThreat = false;
+        trackedThreat = null;
+    }
+
+    /**
+     * Find the closest threat that is behind the player (outside forward FOV).
+     * If no behind-threat exists, returns the closest threat overall.
+     */
+    private Object findBehindThreat() {
+        if (!McReflect.canGetPlayers()) return null;
+
+        List<Object> players = McReflect.getPlayers();
+        Object self = McReflect.getPlayer();
+        if (self == null || players.isEmpty()) return null;
+
+        float playerYaw = McReflect.getPlayerYaw();
+        Object bestBehind = null;
+        double bestBehindDist = detectionRange + 1;
+        Object bestAny = null;
+        double bestAnyDist = detectionRange + 1;
+
+        for (Object entity : players) {
+            if (entity == self || entity.equals(self)) continue;
+            if (!McReflect.isEntityAlive(entity)) continue;
+
+            double dist = McReflect.distanceTo(entity);
+            if (dist > detectionRange) continue;
+
+            float[] angles = McReflect.getAnglesTo(entity);
+            if (angles == null) continue;
+
+            // Check if entity is behind us (more than 90 degrees from look direction)
+            float yawDiff = Math.abs(wrapAngle(angles[0] - playerYaw));
+            boolean isBehind = yawDiff > 90.0f;
+
+            if (isBehind && dist < bestBehindDist) {
+                bestBehindDist = dist;
+                bestBehind = entity;
+            }
+            if (dist < bestAnyDist) {
+                bestAnyDist = dist;
+                bestAny = entity;
+            }
         }
-        isTrackingAttacker = false;
+
+        // Prioritize behind threats, fall back to any close threat
+        return bestBehind != null ? bestBehind : (bestAnyDist <= blockTriggerDistance ? bestAny : null);
     }
 
-    // --- Stub methods for Minecraft client integration ---
+    private void setPlayerRotation(float yaw, float pitch) {
+        try {
+            Object player = McReflect.getPlayer();
+            if (player == null) return;
+            java.lang.reflect.Field yawField = findField(player.getClass(), "field_6031", "yaw");
+            java.lang.reflect.Field pitchField = findField(player.getClass(), "field_6036", "pitch");
+            if (yawField != null) {
+                yawField.setAccessible(true);
+                yawField.setFloat(player, yaw);
+            }
+            if (pitchField != null) {
+                pitchField.setAccessible(true);
+                pitchField.setFloat(player, Math.max(-90f, Math.min(90f, pitch)));
+            }
+        } catch (Exception ignored) {}
+    }
 
-    private Object findIncomingMaceAttacker() {
-        // TODO: Scan nearby players within detectionRange
-        // Check if they: 1) are holding a mace, 2) are above us, 3) are falling
-        // Return the closest threat or null
+    private java.lang.reflect.Field findField(Class<?> clazz, String... names) {
+        Class<?> current = clazz;
+        while (current != null) {
+            for (String name : names) {
+                try {
+                    java.lang.reflect.Field f = current.getDeclaredField(name);
+                    f.setAccessible(true);
+                    return f;
+                } catch (NoSuchFieldException ignored) {}
+            }
+            current = current.getSuperclass();
+        }
         return null;
     }
 
-    private boolean hasShieldEquipped() {
-        // TODO: Check mc.player.getOffHandStack().getItem() == Items.SHIELD
-        return false;
-    }
-
-    private boolean hasShieldInInventory() {
-        // TODO: Scan inventory for shield
-        return false;
-    }
-
-    private void equipShieldToOffhand() {
-        // TODO: Move shield to offhand slot
-    }
-
-    private float[] getAnglesTo(Object entity) {
-        // TODO: Calculate yaw/pitch angles to look at entity
-        // Returns [yaw, pitch]
-        return null;
-    }
-
-    private double getDistanceTo(Object entity) {
-        // TODO: mc.player.distanceTo(entity)
-        return 999;
-    }
-
-    private double getEntityFallSpeed(Object entity) {
-        // TODO: Get entity's vertical velocity (negative = falling)
-        return 0;
-    }
-
-    private void applyRotation(float yaw, float pitch) {
-        // TODO: Set mc.player.setYaw(yaw); mc.player.setPitch(pitch);
-    }
-
-    private void startBlocking() {
-        // TODO: Simulate right-click hold (use item / shield block)
-    }
-
-    private void stopBlocking() {
-        // TODO: Release right-click
-    }
-
-    private boolean hasBlockedAttack() {
-        // TODO: Check if shield just blocked an attack this tick
-        return false;
-    }
-
-    private void counterAttack(Object target) {
-        // TODO: Swing main hand at target after successful block
+    private static float wrapAngle(float angle) {
+        angle = angle % 360;
+        if (angle >= 180) angle -= 360;
+        if (angle < -180) angle += 360;
+        return angle;
     }
 
     // Configuration

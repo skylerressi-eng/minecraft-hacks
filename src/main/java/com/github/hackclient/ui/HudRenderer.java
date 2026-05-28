@@ -42,7 +42,7 @@ public class HudRenderer {
 
         // Watermark (top-left, Meteor style)
         if (showWatermark) {
-            data.watermark = "Phantom Client v1.0.0";
+            data.watermark = "Phantom Client v3.0.0";
             data.watermarkX = 4;
             data.watermarkY = 4;
             data.watermarkColor = WATERMARK_COLOR;

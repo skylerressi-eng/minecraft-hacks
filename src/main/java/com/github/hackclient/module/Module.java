@@ -1,53 +1,91 @@
 package com.github.hackclient.module;
 
 import com.github.hackclient.antidetect.HumanizedTimer;
+import com.github.hackclient.antidetect.StealthEngine;
 import com.github.hackclient.gamemode.GameMode;
 
-/**
- * Base class for all hack modules.
- * Each module belongs to a game mode and uses humanized timing for anti-detection.
- */
 public abstract class Module {
     private final String name;
     private final String description;
     private final GameMode gameMode;
+    private final String category;
     private boolean enabled;
     protected final HumanizedTimer timer;
 
+    private long lastTickTime = 0;
+    private int ticksSinceEnabled = 0;
+    private boolean wasActive = false;
+
     public Module(String name, String description, GameMode gameMode,
                   HumanizedTimer.SkillLevel skillLevel) {
+        this(name, description, gameMode, skillLevel, "general");
+    }
+
+    public Module(String name, String description, GameMode gameMode,
+                  HumanizedTimer.SkillLevel skillLevel, String category) {
         this.name = name;
         this.description = description;
         this.gameMode = gameMode;
+        this.category = category;
         this.enabled = false;
         this.timer = new HumanizedTimer(skillLevel);
     }
 
-    /** Called every game tick when the module is enabled */
     public abstract void onTick();
 
-    /** Called when the module is toggled on */
     public void onEnable() {
         this.enabled = true;
+        this.ticksSinceEnabled = 0;
         timer.resetSession();
     }
 
-    /** Called when the module is toggled off */
     public void onDisable() {
         this.enabled = false;
+        this.ticksSinceEnabled = 0;
     }
 
     public void toggle() {
-        if (enabled) {
-            onDisable();
-        } else {
-            onEnable();
+        if (enabled) onDisable(); else onEnable();
+    }
+
+    protected boolean shouldAct(double baseProbability) {
+        StealthEngine stealth = StealthEngine.getInstance();
+        if (stealth != null) {
+            if (stealth.shouldSkipTick(baseProbability)) return false;
+            return stealth.canAct(category);
         }
+        return Math.random() < baseProbability;
+    }
+
+    protected void recordAction() {
+        StealthEngine stealth = StealthEngine.getInstance();
+        if (stealth != null) stealth.recordAction(category);
+        lastTickTime = System.currentTimeMillis();
+    }
+
+    protected long getSmartDelay(long baseDelay) {
+        StealthEngine stealth = StealthEngine.getInstance();
+        if (stealth != null) return stealth.getSmartDelay(category, baseDelay);
+        return baseDelay;
+    }
+
+    protected boolean isTimerReady() {
+        long now = System.currentTimeMillis();
+        long delay = timer.getNextDelayMs();
+        StealthEngine stealth = StealthEngine.getInstance();
+        if (stealth != null) delay = stealth.getSmartDelay(category, delay);
+        return now - lastTickTime >= delay;
+    }
+
+    protected void incrementTick() {
+        ticksSinceEnabled++;
     }
 
     public String getName() { return name; }
     public String getDescription() { return description; }
     public GameMode getGameMode() { return gameMode; }
+    public String getCategory() { return category; }
     public boolean isEnabled() { return enabled; }
     public HumanizedTimer getTimer() { return timer; }
+    public int getTicksSinceEnabled() { return ticksSinceEnabled; }
 }

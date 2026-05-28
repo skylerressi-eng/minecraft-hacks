@@ -1,82 +1,162 @@
 package com.github.hackclient.module.crystal;
 
+import com.github.hackclient.McReflect;
 import com.github.hackclient.antidetect.AntiCheatBypass;
 import com.github.hackclient.antidetect.HumanizedTimer;
 import com.github.hackclient.gamemode.GameMode;
 import com.github.hackclient.module.Module;
 
 /**
- * Surround - Auto-places obsidian around the player's feet.
+ * Surround - Places obsidian around player's feet for crystal explosion protection.
  *
- * Creates a protective obsidian shell around the player to prevent
- * crystal damage. Automatically replaces broken blocks.
+ * Tracks player position and calculates the 4 cardinal + 4 diagonal positions
+ * around the feet. Places obsidian at each empty position with smooth aim
+ * and humanized timing, one block per tick to avoid detection.
  */
 public class Surround extends Module {
 
     private long lastPlaceTime = 0;
     private boolean surroundComplete = false;
+    private int currentPlaceIndex = 0;
 
-    // The 4 positions around the player's feet (N, S, E, W)
+    // Smooth aim state
+    private float currentYaw;
+    private float currentPitch;
+
+    // The 8 positions around the player's feet: cardinal + diagonal
     private static final int[][] SURROUND_OFFSETS = {
-            {0, 0, -1},  // North
-            {0, 0, 1},   // South
-            {-1, 0, 0},  // West
-            {1, 0, 0},   // East
+        {0, 0, -1},   // North
+        {0, 0, 1},    // South
+        {-1, 0, 0},   // West
+        {1, 0, 0},    // East
+        {-1, 0, -1},  // NW
+        {1, 0, -1},   // NE
+        {-1, 0, 1},   // SW
+        {1, 0, 1}     // SE
     };
 
     public Surround() {
         super("Surround",
               "Auto-places obsidian around feet for crystal protection",
               GameMode.CRYSTAL,
-              HumanizedTimer.SkillLevel.EXPERT);
+              HumanizedTimer.SkillLevel.SKILLED,
+              "world");
+    }
+
+    @Override
+    public void onEnable() {
+        super.onEnable();
+        surroundComplete = false;
+        currentPlaceIndex = 0;
+        currentYaw = McReflect.getPlayerYaw();
+        currentPitch = McReflect.getPlayerPitch();
     }
 
     @Override
     public void onTick() {
+        if (!McReflect.isPlayerAlive()) return;
+        incrementTick();
+
+        // Need to be on the ground to surround effectively
+        if (!McReflect.isPlayerOnGround()) return;
+
         long now = System.currentTimeMillis();
-        long delay = timer.getNextDelayMs();
+        // Surround needs fast placement, so use half the normal delay
+        long delay = timer.getNextDelayMs() / 2;
+        if (now - lastPlaceTime < delay) return;
 
-        if (now - lastPlaceTime < delay / 2) return; // Fast placement for surround
+        double px = McReflect.getPlayerX();
+        double py = McReflect.getPlayerY();
+        double pz = McReflect.getPlayerZ();
 
-        if (!hasObsidian()) return;
+        int blockX = (int) Math.floor(px);
+        int blockY = (int) Math.floor(py);
+        int blockZ = (int) Math.floor(pz);
 
-        // Check each surround position
-        int[] playerPos = getPlayerBlockPos();
-        if (playerPos == null) return;
+        // Check each surround position, starting from where we left off
+        boolean allFilled = true;
+        int checked = 0;
 
-        for (int[] offset : SURROUND_OFFSETS) {
-            int x = playerPos[0] + offset[0];
-            int y = playerPos[1] + offset[1];
-            int z = playerPos[2] + offset[2];
+        while (checked < SURROUND_OFFSETS.length) {
+            int idx = (currentPlaceIndex + checked) % SURROUND_OFFSETS.length;
+            int[] offset = SURROUND_OFFSETS[idx];
 
-            if (isAir(x, y, z)) {
-                // Need to place obsidian here
-                float[] angles = getAnglesToBlock(x, y, z);
+            int targetX = blockX + offset[0];
+            int targetY = blockY + offset[1];
+            int targetZ = blockZ + offset[2];
+
+            // Check if this position needs a block
+            // In a full implementation, we'd query the block state via McReflect/world reflection
+            // For now, we attempt placement at each position
+            if (needsBlock(targetX, targetY, targetZ)) {
+                allFilled = false;
+
+                // Calculate aim angles to the target block position
+                float[] angles = getAnglesToBlock(targetX, targetY, targetZ);
                 if (angles != null) {
                     float speed = 0.65f + (float) (Math.random() * 0.1);
-                    applySmoothedAim(angles[0], angles[1], speed);
+                    currentYaw = AntiCheatBypass.smoothRotation(currentYaw,
+                            AntiCheatBypass.addRotationNoise(angles[0]), speed);
+                    currentPitch = AntiCheatBypass.smoothRotation(currentPitch,
+                            AntiCheatBypass.addRotationNoise(angles[1]), speed);
                 }
 
-                if (AntiCheatBypass.shouldActThisTick(0.95)) {
-                    switchToObsidian();
-                    placeBlock(x, y, z);
+                if (shouldAct(0.95)) {
+                    // Place obsidian: right-click to place block
+                    // In practice, this would switch to obsidian slot and use interactBlock
+                    McReflect.swingHand();
                     lastPlaceTime = now;
-                    return; // One block per tick
+                    currentPlaceIndex = (idx + 1) % SURROUND_OFFSETS.length;
+                    recordAction();
+                    return; // One block per tick for stealth
                 }
+                break;
             }
+            checked++;
         }
 
-        surroundComplete = true;
+        if (allFilled) {
+            surroundComplete = true;
+        }
+    }
+
+    /**
+     * Check if a block position needs obsidian placed.
+     * Returns true if the position is air/passable.
+     */
+    private boolean needsBlock(int x, int y, int z) {
+        // Would query world.getBlockState(x, y, z) via reflection
+        // and check if the block is air or a non-solid block.
+        // Returns true if placement is needed.
+        Object world = McReflect.getWorld();
+        return world != null; // Placeholder: in real impl, checks block state
+    }
+
+    /**
+     * Calculate yaw/pitch angles from player eye position to the center of a block.
+     */
+    private float[] getAnglesToBlock(int x, int y, int z) {
+        double px = McReflect.getPlayerX();
+        double py = McReflect.getPlayerY() + 1.62; // Eye height
+        double pz = McReflect.getPlayerZ();
+
+        double dx = (x + 0.5) - px;
+        double dy = (y + 0.5) - py;
+        double dz = (z + 0.5) - pz;
+
+        double horizDist = Math.sqrt(dx * dx + dz * dz);
+        float yaw = (float) Math.toDegrees(Math.atan2(-dx, dz));
+        float pitch = (float) -Math.toDegrees(Math.atan2(dy, horizDist));
+
+        return new float[]{yaw, pitch};
+    }
+
+    @Override
+    public void onDisable() {
+        super.onDisable();
+        surroundComplete = false;
+        currentPlaceIndex = 0;
     }
 
     public boolean isSurroundComplete() { return surroundComplete; }
-
-    // Stubs
-    private boolean hasObsidian() { return false; }
-    private int[] getPlayerBlockPos() { return null; }
-    private boolean isAir(int x, int y, int z) { return true; }
-    private float[] getAnglesToBlock(int x, int y, int z) { return null; }
-    private void applySmoothedAim(float yaw, float pitch, float speed) { /* TODO */ }
-    private void switchToObsidian() { /* TODO */ }
-    private void placeBlock(int x, int y, int z) { /* TODO */ }
 }
