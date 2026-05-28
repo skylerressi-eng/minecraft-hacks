@@ -145,6 +145,7 @@ public class PhantomClient implements ClientModInitializer {
         if (action != 1) return; // GLFW_PRESS = 1
 
         if (key == GLFW.GLFW_KEY_RIGHT_SHIFT) {
+            instance.rightShiftWasDown = true;
             guiOpen = !guiOpen;
             if (instance.gui != null) instance.gui.setVisible(guiOpen);
             instance.log("GUI " + (guiOpen ? "OPENED" : "CLOSED") + " (via Mixin)");
@@ -170,6 +171,7 @@ public class PhantomClient implements ClientModInitializer {
         }
 
         if (key == GLFW.GLFW_KEY_V && moduleManager != null) {
+            instance.vKeyWasDown = true;
             moduleManager.getAllModules().forEach(m -> {
                 if (m.getName().equals("AutoBreachSwap")) {
                     m.toggle();
@@ -182,6 +184,7 @@ public class PhantomClient implements ClientModInitializer {
         GameMode[] modes = GameMode.values();
         for (int i = 0; i < 7 && i < modes.length; i++) {
             if (key == GLFW.GLFW_KEY_1 + i) {
+                instance.numberKeysWereDown[i] = true;
                 if (instance.gameModeManager != null) {
                     instance.gameModeManager.switchMode(modes[i]);
                     instance.log("Switched to " + modes[i].displayName + " mode");
