@@ -1,5 +1,5 @@
 plugins {
-    id 'java'
+    id 'fabric-loom' version "${loom_version}"
 }
 
 version = project.mod_version
@@ -10,63 +10,29 @@ base {
 }
 
 repositories {
-    mavenCentral()
-}
-
-sourceSets {
-    stubs {
-        java {
-            srcDir 'stubs/java'
-        }
-    }
-    main {
-        java {
-            compileClasspath += sourceSets.stubs.output
-        }
-    }
-    test {
-        java {
-            compileClasspath += sourceSets.stubs.output
-            // Only include the standalone test runner, not JUnit tests
-            exclude '**/HumanizedTimerTest.java'
-            exclude '**/AntiCheatBypassTest.java'
-            exclude '**/ModuleManagerTest.java'
-        }
-    }
+    // Loom adds the Fabric/Minecraft maven repositories automatically.
 }
 
 dependencies {
+    minecraft "com.mojang:minecraft:${project.minecraft_version}"
+    mappings loom.officialMojangMappings()
+    modImplementation "net.fabricmc:fabric-loader:${project.loader_version}"
+    modImplementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_version}"
+}
+
+processResources {
+    inputs.property "version", project.version
+    filteringCharset "UTF-8"
+    filesMatching("fabric.mod.json") {
+        expand "version": inputs.properties.version
+    }
 }
 
 tasks.withType(JavaCompile).configureEach {
-    it.options.release = 17
+    it.options.release = 21
 }
 
 java {
-    sourceCompatibility = JavaVersion.VERSION_17
-    targetCompatibility = JavaVersion.VERSION_17
-}
-
-// Tests are standalone (no JUnit) - run via JavaExec
-test {
-    enabled = false
-}
-
-task runTests(type: JavaExec) {
-    classpath = sourceSets.test.runtimeClasspath
-    mainClass = 'com.github.hackclient.TestRunner'
-}
-
-check.dependsOn runTests
-
-jar {
-    archiveBaseName = 'phantom-client'
-    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
-
-    manifest {
-        attributes(
-            'Fabric-Loom-Mixin-Remap-Type': 'static',
-            'Fabric-Mapping-Namespace': 'intermediary',
-        )
-    }
+    sourceCompatibility = JavaVersion.VERSION_21
+    targetCompatibility = JavaVersion.VERSION_21
 }

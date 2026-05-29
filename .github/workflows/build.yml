@@ -15,25 +15,35 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Set up Java 17
+      - name: Set up Java 21
         uses: actions/setup-java@v4
         with:
-          java-version: '17'
+          java-version: '21'
           distribution: 'temurin'
 
       - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v3
+        uses: gradle/actions/setup-gradle@v4
 
-      - name: Build mod JAR
+      - name: Build mod JAR (Fabric Loom)
         run: |
           chmod +x gradlew
-          ./gradlew jar --no-daemon
+          ./gradlew build --no-daemon --stacktrace
+
+      - name: Collect remapped mod JAR
+        run: |
+          mkdir -p dist
+          # The remapped, runnable mod jar has no -dev/-sources classifier.
+          find build/libs -name 'phantom-client-*.jar' \
+            ! -name '*-dev.jar' ! -name '*-sources.jar' \
+            -exec cp {} dist/ \;
+          echo "Artifacts:"
+          ls -la dist/
 
       - name: Upload mod JAR
         uses: actions/upload-artifact@v4
         with:
           name: phantom-client-mod
-          path: build/libs/phantom-client-*.jar
+          path: dist/*.jar
           if-no-files-found: error
 
       - name: Create Release
@@ -43,32 +53,23 @@ jobs:
           tag_name: v3.0.0-${{ github.run_number }}
           name: "Phantom Client v3.0.0 (Build #${{ github.run_number }})"
           body: |
-            ## Phantom Client v3.0.0
+            ## Phantom Client v3.0.0 — Minecraft 1.21.11
 
-            Drop the `.jar` file into your `.minecraft/mods/` folder.
-            Requires: Minecraft 1.21.1 + Fabric Loader 0.16.0+ + Fabric API
+            Drop the `.jar` into your `.minecraft/mods/` folder (NOT into the Modrinth
+            "add content" uploader — just the mods folder on disk).
+
+            **Requires:** Minecraft 1.21.11 + Fabric Loader 0.19.2+ + Fabric API
 
             **Controls:**
-            - Right Shift: Open/close GUI
-            - 1-7: Switch game modes
-            - V: Toggle AutoBreachSwap
-            - Click modules in the GUI to enable/disable
+            - Right Shift: open / close the GUI
+            - In the GUI: click a module to toggle it, press 1-7 to switch game mode
+            - V (in-game): toggle AutoBreachSwap
+            - Esc: close the GUI
 
-            **58 modules across 7 game modes:**
-            - All Hacks (see all modules)
-            - Mace PvP (8 modules)
-            - 1.8 PvP (7 modules)
-            - Bedwars (6 modules)
-            - Crystal PvP (7 modules)
-            - Meteor (20 modules)
-            - Vape (10 modules)
-
-            **Stealth Engine:**
-            - Staff detection & auto-throttle
-            - Suspicion scoring with panic mode
-            - Anti-cheat profiling (Watchdog, Grim, Vulcan, etc.)
-            - Humanized timing on all actions
-          files: build/libs/phantom-client-*.jar
+            58 modules across 7 game modes, with the stealth engine running in the
+            background. This build is compiled with Fabric Loom against real 1.21.11
+            mappings, so the GUI is a real Minecraft screen that reliably opens.
+          files: dist/*.jar
           draft: false
           prerelease: false
         env:

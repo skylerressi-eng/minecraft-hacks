@@ -1,9 +1,9 @@
 {
     "schemaVersion": 1,
     "id": "phantom-client",
-    "version": "3.0.0",
+    "version": "${version}",
     "name": "Phantom Client",
-    "description": "Advanced Minecraft hack client with stealth engine, 58 modules, 7 game modes",
+    "description": "Advanced Minecraft client with 58 modules across 7 game modes, stealth engine, and a click GUI (Right Shift).",
     "authors": ["PhantomDev"],
     "contact": {},
     "license": "MIT",
@@ -11,13 +11,10 @@
     "entrypoints": {
         "client": ["com.github.hackclient.PhantomClient"]
     },
-    "mixins": [
-        "phantom-client.mixins.json"
-    ],
     "depends": {
-        "fabricloader": ">=0.16.0",
-        "fabric-api": "*",
-        "minecraft": ">=1.21",
-        "java": ">=17"
+        "fabricloader": ">=0.19.2",
+        "minecraft": "~1.21.11",
+        "java": ">=21",
+        "fabric-api": "*"
     }
 }

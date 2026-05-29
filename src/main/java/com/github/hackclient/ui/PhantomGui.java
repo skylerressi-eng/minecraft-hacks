@@ -8,18 +8,20 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Meteor Client-style click GUI.
+ * Meteor Client-style click GUI model.
  *
- * Opens with Right Shift key. Displays module categories as panels
- * in a horizontal layout, each containing toggleable module buttons.
- * Styled to match Meteor Client's dark theme with accent colors.
+ * This class is pure Java (no Minecraft imports) so it can be unit-compiled
+ * without the game. The actual drawing/input is done by {@link PhantomScreen},
+ * which translates {@link RenderCommand}s into GuiGraphics calls and routes
+ * clicks back into {@link #onMouseClick}.
  *
- * Layout: horizontal panels for each game mode category, each panel
- * has a header and a list of module buttons that toggle on click.
+ * Layout: one panel per game mode (ALL_HACKS is skipped to avoid duplicating
+ * every module). Panels flow left-to-right and wrap to a new row when they
+ * would run off the screen.
  */
 public class PhantomGui {
 
-    // Keybind: GLFW_KEY_RIGHT_SHIFT = 344
+    // GLFW_KEY_RIGHT_SHIFT = 344
     public static final int OPEN_KEY = 344;
 
     private boolean visible = false;
@@ -27,46 +29,65 @@ public class PhantomGui {
     private final List<CategoryPanel> panels = new ArrayList<>();
 
     // Meteor-style colors (ARGB)
-    public static final int COLOR_BG = 0xCC1A1A2E;         // Dark navy background
-    public static final int COLOR_PANEL_BG = 0xDD16213E;   // Panel background
-    public static final int COLOR_HEADER = 0xFF0F3460;     // Panel header
-    public static final int COLOR_ACCENT = 0xFF533483;     // Accent purple
-    public static final int COLOR_ENABLED = 0xFF00D4AA;    // Enabled module - teal
-    public static final int COLOR_DISABLED = 0xFF808080;   // Disabled module - gray
-    public static final int COLOR_HOVER = 0xFF2A2A4A;      // Hover highlight
-    public static final int COLOR_TEXT = 0xFFE0E0E0;       // Light text
-    public static final int COLOR_TEXT_DIM = 0xFF909090;   // Dimmed text
+    public static final int COLOR_BG = 0xC0101020;          // Dark backdrop
+    public static final int COLOR_PANEL_BG = 0xE0161A2E;     // Panel background
+    public static final int COLOR_HEADER = 0xFF0F3460;       // Panel header
+    public static final int COLOR_ACCENT = 0xFF533483;       // Accent purple
+    public static final int COLOR_ENABLED = 0xFF00D4AA;      // Enabled module - teal
+    public static final int COLOR_DISABLED = 0xFFB0B0B0;     // Disabled module - light gray
+    public static final int COLOR_HOVER = 0xFF2A2F4A;        // Hover highlight
+    public static final int COLOR_TEXT = 0xFFFFFFFF;         // Header text
+    public static final int COLOR_TEXT_DIM = 0xFF9090A0;     // Dimmed text
 
-    // Layout constants (Meteor-style)
-    private static final int PANEL_WIDTH = 110;
-    private static final int PANEL_SPACING = 4;
-    private static final int HEADER_HEIGHT = 22;
-    private static final int BUTTON_HEIGHT = 16;
-    private static final int START_X = 10;
-    private static final int START_Y = 10;
+    // Layout constants
+    public static final int PANEL_WIDTH = 96;
+    public static final int PANEL_SPACING = 4;
+    public static final int HEADER_HEIGHT = 15;
+    public static final int BUTTON_HEIGHT = 12;
+    public static final int START_X = 6;
+    public static final int START_Y = 22;
 
     public PhantomGui(ModuleManager moduleManager) {
         this.moduleManager = moduleManager;
         initPanels();
+        layout(854, 480);
     }
 
     private void initPanels() {
         panels.clear();
-        int x = START_X;
-
         for (GameMode mode : GameMode.values()) {
+            if (mode == GameMode.ALL_HACKS) continue; // skip the all-in-one duplicate
             List<Module> modules = moduleManager.getModulesForMode(mode);
             if (!modules.isEmpty()) {
-                CategoryPanel panel = new CategoryPanel(mode.displayName, x, START_Y, modules);
-                panels.add(panel);
-                x += PANEL_WIDTH + PANEL_SPACING;
+                panels.add(new CategoryPanel(mode.displayName, START_X, START_Y, modules));
             }
         }
     }
 
     /**
-     * Handle key press - toggle GUI visibility on Right Shift.
+     * Arrange panels into rows that fit within the given screen width.
+     * Called by the screen when it opens (we then know the real size).
      */
+    public void layout(int screenWidth, int screenHeight) {
+        int x = START_X;
+        int y = START_Y;
+        int rowHeight = 0;
+        for (CategoryPanel panel : panels) {
+            int panelHeight = panel.totalHeight();
+            if (x + PANEL_WIDTH > screenWidth - START_X && x > START_X) {
+                // wrap to next row
+                x = START_X;
+                y += rowHeight + PANEL_SPACING;
+                rowHeight = 0;
+            }
+            panel.x = x;
+            panel.y = y;
+            x += PANEL_WIDTH + PANEL_SPACING;
+            rowHeight = Math.max(rowHeight, panelHeight);
+        }
+    }
+
+    /** Toggle GUI visibility (used by tests). */
     public boolean onKeyPress(int keyCode) {
         if (keyCode == OPEN_KEY) {
             visible = !visible;
@@ -76,20 +97,16 @@ public class PhantomGui {
     }
 
     /**
-     * Handle mouse click - toggle modules when clicking buttons.
-     * Returns true if click was consumed by the GUI.
+     * Handle a left click. Returns true if the click hit a module/header.
      */
     public boolean onMouseClick(double mouseX, double mouseY, int button) {
         if (!visible || button != 0) return false;
-
         for (CategoryPanel panel : panels) {
             Module clicked = panel.getModuleAt(mouseX, mouseY);
             if (clicked != null) {
                 clicked.toggle();
                 return true;
             }
-
-            // Check if header clicked (collapse/expand)
             if (panel.isHeaderAt(mouseX, mouseY)) {
                 panel.toggleExpanded();
                 return true;
@@ -99,17 +116,14 @@ public class PhantomGui {
     }
 
     /**
-     * Render the GUI. Called from the HUD render event.
-     * In actual Fabric implementation, this draws to the MatrixStack.
-     *
-     * @return Render data for each panel/button (for the actual renderer to draw)
+     * Produce the list of draw commands for the current state.
      */
     public List<RenderCommand> getRenderCommands(double mouseX, double mouseY) {
         List<RenderCommand> commands = new ArrayList<>();
         if (!visible) return commands;
 
         for (CategoryPanel panel : panels) {
-            // Panel header
+            // Header
             commands.add(new RenderCommand(RenderCommand.Type.RECT,
                     panel.x, panel.y, PANEL_WIDTH, HEADER_HEIGHT,
                     COLOR_HEADER, panel.name));
@@ -126,15 +140,13 @@ public class PhantomGui {
 
                 commands.add(new RenderCommand(RenderCommand.Type.MODULE_BUTTON,
                         panel.x, y, PANEL_WIDTH, BUTTON_HEIGHT,
-                        bgColor, module.getName()));
+                        bgColor, null));
                 commands.add(new RenderCommand(RenderCommand.Type.TEXT,
-                        panel.x + 4, y + 4, 0, 0,
+                        panel.x + 4, y + 2, 0, 0,
                         textColor, module.getName()));
-
                 y += BUTTON_HEIGHT;
             }
         }
-
         return commands;
     }
 
@@ -142,13 +154,10 @@ public class PhantomGui {
     public void setVisible(boolean visible) { this.visible = visible; }
     public List<CategoryPanel> getPanels() { return panels; }
 
-    /**
-     * A category panel containing modules for a game mode.
-     */
     public static class CategoryPanel {
         public final String name;
-        public final int x;
-        public final int y;
+        public int x;
+        public int y;
         public final List<Module> modules;
         public boolean expanded = true;
 
@@ -159,8 +168,10 @@ public class PhantomGui {
             this.modules = modules;
         }
 
-        public void toggleExpanded() {
-            expanded = !expanded;
+        public void toggleExpanded() { expanded = !expanded; }
+
+        public int totalHeight() {
+            return HEADER_HEIGHT + (expanded ? modules.size() * BUTTON_HEIGHT : 0);
         }
 
         public boolean isHeaderAt(double mx, double my) {
@@ -182,9 +193,6 @@ public class PhantomGui {
         }
     }
 
-    /**
-     * Render command for the actual GUI renderer to process.
-     */
     public static class RenderCommand {
         public enum Type { RECT, MODULE_BUTTON, TEXT }
 
