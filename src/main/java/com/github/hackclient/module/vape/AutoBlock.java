@@ -1,12 +1,10 @@
 package com.github.hackclient.module.vape;
 
 import com.github.hackclient.McReflect;
-import com.github.hackclient.antidetect.AntiCheatBypass;
 import com.github.hackclient.antidetect.HumanizedTimer;
 import com.github.hackclient.gamemode.GameMode;
 import com.github.hackclient.module.Module;
 
-import java.lang.reflect.Method;
 import java.util.List;
 
 /**

@@ -6,7 +6,6 @@ import com.github.hackclient.antidetect.HumanizedTimer;
 import com.github.hackclient.gamemode.GameMode;
 import com.github.hackclient.module.Module;
 
-import java.util.List;
 
 /**
  * Smart Crystal Anchor - Intelligent combo of crystal + anchor placement.

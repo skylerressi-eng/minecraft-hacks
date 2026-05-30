@@ -1,7 +1,6 @@
 package com.github.hackclient.module.legacy;
 
 import com.github.hackclient.McReflect;
-import com.github.hackclient.antidetect.AntiCheatBypass;
 import com.github.hackclient.antidetect.HumanizedTimer;
 import com.github.hackclient.antidetect.StealthEngine;
 import com.github.hackclient.gamemode.GameMode;
