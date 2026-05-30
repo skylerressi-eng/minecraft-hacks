@@ -7,6 +7,7 @@ on:
 
 permissions:
   contents: write
+  issues: write
 
 jobs:
   build:
@@ -27,7 +28,31 @@ jobs:
       - name: Build mod JAR (Fabric Loom)
         run: |
           chmod +x gradlew
-          ./gradlew build --no-daemon --stacktrace
+          set -o pipefail
+          ./gradlew build --no-daemon --stacktrace 2>&1 | tee build-output.log
+
+      - name: Report build failure (diagnostic log to issue)
+        if: failure() && github.ref == 'refs/heads/claude/vigilant-knuth-LGZHm'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          {
+            echo "Automated CI diagnostic for run ${{ github.run_number }} (commit ${{ github.sha }})."
+            echo
+            echo "### Error / failure lines"
+            echo '```'
+            grep -nE "error:|: error|FAILED|BUILD FAILED|What went wrong|Caused by|Exception|cannot find symbol|incompatible types|no suitable method" build-output.log | tail -n 150 || true
+            echo '```'
+            echo
+            echo "### Log tail"
+            echo '```'
+            tail -c 40000 build-output.log || true
+            echo '```'
+          } > issue-body.md
+          gh issue create \
+            --title "CI diagnostic: build run ${{ github.run_number }}" \
+            --body-file issue-body.md \
+            --repo "$GITHUB_REPOSITORY" || true
 
       - name: Collect remapped mod JAR
         run: |
