@@ -11,8 +11,6 @@ import com.github.hackclient.ui.PhantomScreen;
 
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
-import net.fabricmc.fabric.api.client.keybinding.v1.KeyBindingHelper;
-import net.minecraft.client.KeyMapping;
 import net.minecraft.client.Minecraft;
 import net.minecraft.network.chat.Component;
 
@@ -26,11 +24,9 @@ import java.util.List;
  * Design notes:
  *  - The GUI is a real {@link PhantomScreen} opened with Minecraft.setScreen,
  *    so it reliably "opens" (mouse freed, clickable) on any 1.21.x build.
- *  - The open key (Right Shift) and the AutoBreachSwap key (V) are real,
- *    rebindable {@link KeyMapping}s registered with Fabric's KeyBindingHelper.
- *    Minecraft's own input system delivers the presses (via consumeClick), so
- *    they appear in Options ▸ Controls and don't depend on fragile raw GLFW
- *    polling that could silently no-op.
+ *  - The open key (Right Shift) and the AutoBreachSwap key (V) are read by
+ *    polling GLFW directly. GLFW key codes are constant across versions, so this
+ *    avoids the 1.21.9+ KeyMapping/Category and KeyEvent API churn entirely.
  *  - The 58 hack modules drive the game through {@link McReflect} (reflection
  *    against stable intermediary names) and are fully decoupled from the GUI —
  *    even if reflection fails on a given build, the menu still opens.
@@ -48,8 +44,8 @@ public class PhantomClient implements ClientModInitializer {
     private PhantomGui gui;
     private HudRenderer hudRenderer;
 
-    private static KeyMapping openGuiKey;
-    private static KeyMapping autoBreachSwapKey;
+    private boolean rightShiftDownLast = false;
+    private boolean vDownLast = false;
 
     private boolean mcReflectReady = false;
     private int initAttempts = 0;
@@ -68,16 +64,6 @@ public class PhantomClient implements ClientModInitializer {
 
         gui = new PhantomGui(moduleManager);
         hudRenderer = new HudRenderer(moduleManager);
-
-        // Register key bindings through Minecraft itself. This makes them show up
-        // (and be rebindable) in Options > Controls, and lets Minecraft's own input
-        // system deliver the presses — far more reliable than raw GLFW polling,
-        // which could silently no-op when no GL context was current on the tick
-        // thread. Right Shift opens the GUI; V toggles AutoBreachSwap.
-        openGuiKey = KeyBindingHelper.registerKeyBinding(new KeyMapping(
-                "key.phantom.open_gui", GLFW.GLFW_KEY_RIGHT_SHIFT, "key.categories.phantom"));
-        autoBreachSwapKey = KeyBindingHelper.registerKeyBinding(new KeyMapping(
-                "key.phantom.autobreachswap", GLFW.GLFW_KEY_V, "key.categories.phantom"));
 
         ClientTickEvents.END_CLIENT_TICK.register(this::onClientTick);
 
@@ -110,10 +96,9 @@ public class PhantomClient implements ClientModInitializer {
                 if (!welcomeSent && McReflect.getPlayer() != null) {
                     welcomeSent = true;
                     if (client.player != null) {
-                        client.player.sendSystemMessage(Component.literal(
+                        client.player.displayClientMessage(Component.literal(
                                 "§b[Phantom] §fv" + VERSION
-                                        + " loaded. Press §eRIGHT SHIFT§f to open the GUI "
-                                        + "§7(rebindable in Options ▸ Controls)§f."));
+                                        + " loaded. Press §eRIGHT SHIFT§f to open the GUI."), false);
                     }
                 }
                 moduleManager.tickAll();
@@ -124,21 +109,28 @@ public class PhantomClient implements ClientModInitializer {
     }
 
     private void handleKeys(Minecraft client) {
-        // Right Shift (rebindable): open the GUI. consumeClick() only fires for
-        // presses Minecraft delivered while in-game (no screen capturing input),
-        // so this path only ever opens. Closing is handled inside PhantomScreen,
-        // which means the two never trigger for the same press (no double-toggle).
-        while (openGuiKey.consumeClick()) {
-            if (client.screen == null) {
+        long window = GLFW.glfwGetCurrentContext();
+        if (window == 0L) return;
+
+        // Right Shift: toggle the GUI screen open/closed.
+        boolean rsDown = GLFW.glfwGetKey(window, GLFW.GLFW_KEY_RIGHT_SHIFT) == GLFW.GLFW_PRESS;
+        if (rsDown && !rightShiftDownLast) {
+            if (client.screen instanceof PhantomScreen) {
+                client.setScreen(null);
+                log("GUI closed.");
+            } else if (client.screen == null) {
                 client.setScreen(new PhantomScreen(gui));
                 log("GUI opened.");
             }
         }
+        rightShiftDownLast = rsDown;
 
-        // V (rebindable): toggle AutoBreachSwap.
-        while (autoBreachSwapKey.consumeClick()) {
+        // V: toggle AutoBreachSwap (V is unbound in vanilla).
+        boolean vDown = GLFW.glfwGetKey(window, GLFW.GLFW_KEY_V) == GLFW.GLFW_PRESS;
+        if (vDown && !vDownLast && client.screen == null) {
             toggleAutoBreachSwap(client);
         }
+        vDownLast = vDown;
     }
 
     private void toggleAutoBreachSwap(Minecraft client) {
@@ -148,9 +140,9 @@ public class PhantomClient implements ClientModInitializer {
                 .ifPresent(m -> {
                     m.toggle();
                     if (client.player != null) {
-                        client.player.sendSystemMessage(Component.literal(
+                        client.player.displayClientMessage(Component.literal(
                                 "§b[Phantom] §fAutoBreachSwap "
-                                        + (m.isEnabled() ? "§aENABLED" : "§cDISABLED")));
+                                        + (m.isEnabled() ? "§aENABLED" : "§cDISABLED")), false);
                     }
                 });
     }

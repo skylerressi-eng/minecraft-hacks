@@ -12,16 +12,22 @@ import org.lwjgl.glfw.GLFW;
 import java.util.List;
 
 /**
- * The actual Meteor-style click GUI, implemented as a real Minecraft {@link Screen}.
+ * The Meteor-style click GUI, implemented as a real Minecraft {@link Screen}.
  *
- * Opening a real Screen (via Minecraft.setScreen) is what releases the mouse,
- * lets the panels be clicked, and makes the menu unmistakably "open". All the
- * layout/state lives in {@link PhantomGui}; this class just draws it and routes
- * input.
+ * Input handling note: Minecraft 1.21.9+ changed the Screen mouse/key callback
+ * signatures (they now take MouseButtonEvent / KeyEvent records instead of plain
+ * ints/doubles), and those types differ between versions. To stay version-proof
+ * we override ONLY the stable Screen methods (init / render / isPauseScreen) and
+ * read input by polling GLFW directly — GLFW codes are constant across every
+ * Minecraft version. The scaled cursor position is taken straight from render()'s
+ * mouseX/mouseY, so no manual GUI-scale math is needed.
  */
 public class PhantomScreen extends Screen {
 
     private final PhantomGui gui;
+
+    private boolean leftWasDown = false;
+    private final boolean[] numWasDown = new boolean[7];
 
     public PhantomScreen(PhantomGui gui) {
         super(Component.literal("Phantom Client"));
@@ -36,6 +42,9 @@ public class PhantomScreen extends Screen {
 
     @Override
     public void render(GuiGraphics g, int mouseX, int mouseY, float partialTick) {
+        // Route clicks / number keys via GLFW polling (see class note).
+        handleInput(mouseX, mouseY);
+
         // Dim backdrop so the menu is obvious.
         g.fill(0, 0, this.width, this.height, 0xC0101020);
 
@@ -72,36 +81,40 @@ public class PhantomScreen extends Screen {
         super.render(g, mouseX, mouseY, partialTick);
     }
 
-    @Override
-    public boolean mouseClicked(double mouseX, double mouseY, int button) {
-        if (gui.onMouseClick(mouseX, mouseY, button)) {
-            return true;
+    /**
+     * Poll GLFW for in-GUI input. We deliberately do NOT override
+     * mouseClicked/keyPressed because their signatures changed in 1.21.9+
+     * (MouseButtonEvent / KeyEvent). Polling keeps the GUI working on every
+     * 1.21.x build. mouseX/mouseY are already in scaled GUI coordinates here.
+     */
+    private void handleInput(int mouseX, int mouseY) {
+        long window = GLFW.glfwGetCurrentContext();
+        if (window == 0L) return;
+
+        // Left click toggles the module/header under the cursor (edge-detected).
+        boolean leftDown = GLFW.glfwGetMouseButton(window, GLFW.GLFW_MOUSE_BUTTON_LEFT) == GLFW.GLFW_PRESS;
+        if (leftDown && !leftWasDown) {
+            gui.onMouseClick(mouseX, mouseY, 0);
         }
-        return super.mouseClicked(mouseX, mouseY, button);
+        leftWasDown = leftDown;
+
+        // 1-7 switch game mode while the menu is focused.
+        for (int i = 0; i < numWasDown.length; i++) {
+            boolean down = GLFW.glfwGetKey(window, GLFW.GLFW_KEY_1 + i) == GLFW.GLFW_PRESS;
+            if (down && !numWasDown[i]) {
+                switchMode(i);
+            }
+            numWasDown[i] = down;
+        }
     }
 
-    @Override
-    public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
-        // 1-7 switch game mode (note: handled here, not via global keybind, so it
-        // never conflicts with the hotbar during normal play).
-        if (keyCode >= GLFW.GLFW_KEY_1 && keyCode <= GLFW.GLFW_KEY_7) {
-            int idx = keyCode - GLFW.GLFW_KEY_1;
-            PhantomClient pc = PhantomClient.getInstance();
-            GameMode[] modes = GameMode.values();
-            if (pc != null && pc.getGameModeManager() != null && idx < modes.length) {
-                pc.getGameModeManager().switchMode(modes[idx]);
-                gui.layout(this.width, this.height);
-            }
-            return true;
+    private void switchMode(int idx) {
+        PhantomClient pc = PhantomClient.getInstance();
+        GameMode[] modes = GameMode.values();
+        if (pc != null && pc.getGameModeManager() != null && idx < modes.length) {
+            pc.getGameModeManager().switchMode(modes[idx]);
+            gui.layout(this.width, this.height);
         }
-        // Right Shift closes the GUI (Esc also closes via the default handler).
-        // Opening is done by the registered key binding while in-game, so these
-        // two paths never fire for the same key press — no double-toggle.
-        if (keyCode == GLFW.GLFW_KEY_RIGHT_SHIFT) {
-            this.onClose();
-            return true;
-        }
-        return super.keyPressed(keyCode, scanCode, modifiers);
     }
 
     @Override
