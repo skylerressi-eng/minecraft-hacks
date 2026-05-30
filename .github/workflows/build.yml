@@ -7,7 +7,6 @@ on:
 
 permissions:
   contents: write
-  issues: write
 
 jobs:
   build:
@@ -28,31 +27,7 @@ jobs:
       - name: Build mod JAR (Fabric Loom)
         run: |
           chmod +x gradlew
-          set -o pipefail
-          ./gradlew build --no-daemon --stacktrace 2>&1 | tee build-output.log
-
-      - name: Report build failure (diagnostic log to issue)
-        if: failure() && github.ref == 'refs/heads/claude/vigilant-knuth-LGZHm'
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          {
-            echo "Automated CI diagnostic for run ${{ github.run_number }} (commit ${{ github.sha }})."
-            echo
-            echo "### Error / failure lines"
-            echo '```'
-            grep -nE "error:|: error|FAILED|BUILD FAILED|What went wrong|Caused by|Exception|cannot find symbol|incompatible types|no suitable method" build-output.log | tail -n 150 || true
-            echo '```'
-            echo
-            echo "### Log tail"
-            echo '```'
-            tail -c 40000 build-output.log || true
-            echo '```'
-          } > issue-body.md
-          gh issue create \
-            --title "CI diagnostic: build run ${{ github.run_number }}" \
-            --body-file issue-body.md \
-            --repo "$GITHUB_REPOSITORY" || true
+          ./gradlew build --no-daemon --stacktrace
 
       - name: Collect remapped mod JAR
         run: |
@@ -78,30 +53,30 @@ jobs:
           tag_name: v3.0.0-${{ github.run_number }}
           name: "Phantom Client v3.0.0 (Build #${{ github.run_number }})"
           body: |
-            ## Phantom Client v3.0.0 — Minecraft 1.21.x
+            ## Phantom Client v3.0.0 — built for Minecraft 1.21.11
 
             Drop the `.jar` into your `.minecraft/mods/` folder (NOT into the Modrinth
             "add content" uploader — just the mods folder on disk).
 
             **Requires (all three):**
-            - Minecraft **1.21.x** (the whole 1.21 line is supported)
+            - Minecraft **1.21.11** (built against it; declares `~1.21` so it will try
+              to load on other 1.21.x builds, but 1.21.11 is what it's tested against)
             - **Fabric Loader** 0.16+ (install the Fabric *loader* for your MC version)
             - **Fabric API** — download the matching jar and put it in `mods/` too
 
-            > If pressing the key does nothing, you are almost always missing
-            > **Fabric API** in your `mods/` folder, or your Minecraft version is not
-            > 1.21.x. Both jars (this one **and** Fabric API) must be in `mods/`.
+            > If pressing Right Shift does nothing, you are almost always missing
+            > **Fabric API** in your `mods/` folder, or your Minecraft version isn't
+            > 1.21.11. Both jars (this one **and** Fabric API) must be in `mods/`.
 
             **Controls:**
-            - **Right Shift**: open the GUI (rebindable in **Options ▸ Controls ▸ Phantom Client**)
-            - In the GUI: click a module to toggle it, press 1-7 to switch game mode
-            - **V** (in-game): toggle AutoBreachSwap (also rebindable)
-            - **Esc** or **Right Shift**: close the GUI
+            - **Right Shift**: open / close the GUI
+            - In the GUI: **click** a module to toggle it, press **1-7** to switch game mode
+            - **V** (in-game): toggle AutoBreachSwap
+            - **Esc**: also closes the GUI
 
             58 modules across 7 game modes, with the stealth engine running in the
-            background. The open key is now a real registered key binding, so it
-            shows up in the vanilla Controls menu and is delivered by Minecraft's
-            own input system (no fragile raw-input polling).
+            background. Input is read by polling GLFW directly, so the GUI keeps
+            working across Minecraft's 1.21.9+ input-API changes.
           files: dist/*.jar
           draft: false
           prerelease: false
