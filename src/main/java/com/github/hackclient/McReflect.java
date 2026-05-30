@@ -421,8 +421,14 @@ public class McReflect {
     }
 
     private static void initSendMessage() {
+        // 1.21.11 removed Player.sendSystemMessage (mojmap) / method_9203 (intermediary).
+        // The actually-callable replacement on LocalPlayer is displayClientMessage
+        // (intermediary method_7353), which takes (Component, boolean actionBar).
+        // Keep the older names as fallbacks for older 1.21.x builds.
         String[] classes = {"net.minecraft.class_746", "net.minecraft.class_1657", "net.minecraft.class_1297"};
-        String[] methodNames = {"method_9203", "method_44096", "sendMessage"};
+        String[] methodNames = {"method_7353", "displayClientMessage",
+                                "method_9203", "sendSystemMessage",
+                                "method_44096", "sendMessage"};
 
         for (String className : classes) {
             Class<?> clazz = tryLoadClass(className);
@@ -431,11 +437,11 @@ public class McReflect {
             if (textClass != null) {
                 for (String name : methodNames) {
                     sendMessageMethod = tryFindMethod(clazz, new String[]{name}, textClass, boolean.class);
-                    if (sendMessageMethod != null) { success("sendMessage(Text,bool) on " + className); return; }
+                    if (sendMessageMethod != null) { success("sendMessage(Text,bool) on " + className + " via " + name); return; }
                 }
                 for (String name : methodNames) {
                     sendMessageMethod = tryFindMethod(clazz, new String[]{name}, textClass);
-                    if (sendMessageMethod != null) { success("sendMessage(Text) on " + className); return; }
+                    if (sendMessageMethod != null) { success("sendMessage(Text) on " + className + " via " + name); return; }
                 }
                 for (Method m : clazz.getMethods()) {
                     if (m.getParameterCount() == 1 && m.getParameterTypes()[0].equals(textClass)) {
@@ -580,6 +586,90 @@ public class McReflect {
             if (value instanceof Boolean) return (boolean) value;
             return false;
         } catch (Exception e) { return false; }
+    }
+
+    /**
+     * Read or write the user's gamma option. Gamma is wrapped in a
+     * SimpleOption&lt;Double&gt;, so we go through its set/get accessors when
+     * available, falling back to direct field write if the wrapper looks like
+     * an OptionInstance. Returns the prior value (1.0 default if unavailable)
+     * so callers can restore on disable.
+     */
+    public static double getGamma() {
+        try {
+            if (optionsField == null) return 1.0;
+            Object options = optionsField.get(getMinecraftClient());
+            if (options == null) return 1.0;
+            Object gammaOpt = readGammaOption(options);
+            if (gammaOpt == null) return 1.0;
+            Method getValue = tryFindMethod(gammaOpt.getClass(),
+                    new String[]{"method_41753", "getValue", "get"});
+            if (getValue != null) {
+                Object v = getValue.invoke(gammaOpt);
+                if (v instanceof Double) return (double) v;
+                if (v instanceof Number) return ((Number) v).doubleValue();
+            }
+        } catch (Exception ignored) {}
+        return 1.0;
+    }
+
+    public static void setGamma(double value) {
+        try {
+            if (optionsField == null) return;
+            Object options = optionsField.get(getMinecraftClient());
+            if (options == null) return;
+            Object gammaOpt = readGammaOption(options);
+            if (gammaOpt == null) return;
+            Method setValue = tryFindMethod(gammaOpt.getClass(),
+                    new String[]{"method_41748", "setValue", "set"}, Object.class);
+            if (setValue != null) {
+                setValue.invoke(gammaOpt, value);
+            }
+        } catch (Exception ignored) {}
+    }
+
+    private static Object readGammaOption(Object options) {
+        Field f = tryFindFieldAccessible(options.getClass(),
+                new String[]{"field_26450", "gamma"});
+        if (f == null) return null;
+        try { return f.get(options); } catch (Exception e) { return null; }
+    }
+
+    /**
+     * Attempt to "right-click" with the currently held item — used by AutoEat to
+     * actually consume food. The 1.21.x interactionManager exposes useItem(player,
+     * world, hand) returning an InteractionResult; we invoke whatever signature
+     * is present.
+     */
+    public static boolean useHeldItem() {
+        try {
+            Object mc = getMinecraftClient();
+            if (mc == null || interactionManagerField == null) return false;
+            Object im = interactionManagerField.get(mc);
+            Object player = getPlayer();
+            Object world = getWorld();
+            if (im == null || player == null || world == null) return false;
+            Class<?> handClass = tryLoadClass("net.minecraft.class_1268");
+            if (handClass == null) return false;
+            Object mainHand = handClass.getEnumConstants()[0];
+
+            for (Method m : im.getClass().getMethods()) {
+                String n = m.getName();
+                if (!(n.equals("method_2919") || n.equals("useItem"))) continue;
+                Class<?>[] p = m.getParameterTypes();
+                try {
+                    if (p.length == 3) {
+                        m.invoke(im, player, world, mainHand);
+                        return true;
+                    }
+                    if (p.length == 2) {
+                        m.invoke(im, player, mainHand);
+                        return true;
+                    }
+                } catch (Exception ignored) {}
+            }
+        } catch (Exception ignored) {}
+        return false;
     }
 
     // === Public API: Player State ===

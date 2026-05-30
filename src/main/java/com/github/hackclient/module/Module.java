@@ -1,5 +1,6 @@
 package com.github.hackclient.module;
 
+import com.github.hackclient.McReflect;
 import com.github.hackclient.antidetect.HumanizedTimer;
 import com.github.hackclient.antidetect.StealthEngine;
 import com.github.hackclient.gamemode.GameMode;
@@ -37,11 +38,21 @@ public abstract class Module {
         this.enabled = true;
         this.ticksSinceEnabled = 0;
         timer.resetSession();
+        notifyToggle(true);
     }
 
     public void onDisable() {
         this.enabled = false;
         this.ticksSinceEnabled = 0;
+        notifyToggle(false);
+    }
+
+    /** Send a chat message confirming the toggle state. Silent if chat isn't available. */
+    private void notifyToggle(boolean on) {
+        if (!McReflect.canSendMessage()) return;
+        McReflect.sendChatMessage(on
+                ? "§b[Phantom] §f" + name + " §aENABLED"
+                : "§b[Phantom] §f" + name + " §cDISABLED");
     }
 
     public void toggle() {
