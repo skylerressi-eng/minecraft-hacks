@@ -2,7 +2,7 @@ name: Build Phantom Client JAR
 
 on:
   push:
-    branches: [ 'claude/minecraft-hack-client-IPi0a', 'main' ]
+    branches: [ 'claude/minecraft-hack-client-IPi0a', 'claude/vigilant-knuth-LGZHm', 'main' ]
   workflow_dispatch:
 
 permissions:
@@ -47,28 +47,36 @@ jobs:
           if-no-files-found: error
 
       - name: Create Release
-        if: github.ref == 'refs/heads/claude/minecraft-hack-client-IPi0a'
+        if: github.ref == 'refs/heads/claude/minecraft-hack-client-IPi0a' || github.ref == 'refs/heads/claude/vigilant-knuth-LGZHm'
         uses: softprops/action-gh-release@v1
         with:
           tag_name: v3.0.0-${{ github.run_number }}
           name: "Phantom Client v3.0.0 (Build #${{ github.run_number }})"
           body: |
-            ## Phantom Client v3.0.0 — Minecraft 1.21.11
+            ## Phantom Client v3.0.0 — Minecraft 1.21.x
 
             Drop the `.jar` into your `.minecraft/mods/` folder (NOT into the Modrinth
             "add content" uploader — just the mods folder on disk).
 
-            **Requires:** Minecraft 1.21.11 + Fabric Loader 0.19.2+ + Fabric API
+            **Requires (all three):**
+            - Minecraft **1.21.x** (the whole 1.21 line is supported)
+            - **Fabric Loader** 0.16+ (install the Fabric *loader* for your MC version)
+            - **Fabric API** — download the matching jar and put it in `mods/` too
+
+            > If pressing the key does nothing, you are almost always missing
+            > **Fabric API** in your `mods/` folder, or your Minecraft version is not
+            > 1.21.x. Both jars (this one **and** Fabric API) must be in `mods/`.
 
             **Controls:**
-            - Right Shift: open / close the GUI
+            - **Right Shift**: open the GUI (rebindable in **Options ▸ Controls ▸ Phantom Client**)
             - In the GUI: click a module to toggle it, press 1-7 to switch game mode
-            - V (in-game): toggle AutoBreachSwap
-            - Esc: close the GUI
+            - **V** (in-game): toggle AutoBreachSwap (also rebindable)
+            - **Esc** or **Right Shift**: close the GUI
 
             58 modules across 7 game modes, with the stealth engine running in the
-            background. This build is compiled with Fabric Loom against real 1.21.11
-            mappings, so the GUI is a real Minecraft screen that reliably opens.
+            background. The open key is now a real registered key binding, so it
+            shows up in the vanilla Controls menu and is delivered by Minecraft's
+            own input system (no fragile raw-input polling).
           files: dist/*.jar
           draft: false
           prerelease: false

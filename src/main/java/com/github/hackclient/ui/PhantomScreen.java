@@ -94,8 +94,13 @@ public class PhantomScreen extends Screen {
             }
             return true;
         }
-        // Right Shift closing is handled by the client tick poll in PhantomClient,
-        // so we deliberately don't handle 344 here (avoids double-toggling).
+        // Right Shift closes the GUI (Esc also closes via the default handler).
+        // Opening is done by the registered key binding while in-game, so these
+        // two paths never fire for the same key press — no double-toggle.
+        if (keyCode == GLFW.GLFW_KEY_RIGHT_SHIFT) {
+            this.onClose();
+            return true;
+        }
         return super.keyPressed(keyCode, scanCode, modifiers);
     }
 
